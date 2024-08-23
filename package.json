@@ -1,0 +1,19 @@
+{
+  "name": "marvin",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "marvin": "tsc & node dest"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "openai": "^4.56.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}
