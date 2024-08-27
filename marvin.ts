@@ -14,6 +14,8 @@ export const initMarvin = async (holiday: string | undefined) => {
       {
         role: "system",
         content: `Dzisiaj jest ${holiday}.
+        Poszczególne święta mogą być oddzielone przecinkami.
+        Odwołaj się do każdego ze świąt.
         Z tej okazji wcielasz się w rolę powiązaną z ${holiday}.
         Rola ma być maksymalnie abstakcyjna i zabawna.
         Odpowiadaj jako rola powiązana z ${holiday}.

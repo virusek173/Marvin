@@ -1,20 +1,26 @@
 import { HolidayObject } from "./model.js";
 
-export const holidayList: Array<string> = [
-  "Światowy dzień depresji",
-  "Światowy Dzień Kaca",
-  "Dzień Ciasta Lodowego",
-  "Dzień Filatelisty",
-  "Dzień Dziwaka",
-  "Ogólnopolski Dzień Walki z Depresją",
-  "Święto Bułki, Dzień bez Alkoholu, Światowy Dzień Mleka",
-  "Międzynarodowy Dzień Przytulania, Święto Niepodległości (Nauru)",
-  "Światowy Dzień Środków Masowego Przekazu, Dzień Gospodarczego Wyzwolenia (Togo), Dzień Prawienia Komplementów",
-];
-
-export const holidayData: Array<HolidayObject> = holidayList.map(
-  (holiday: string, index: number) => ({
-    date: `08${20 + index}`,
-    holiday,
-  })
-);
+export const holidayObject: HolidayObject = {
+  "0827": "Dzień Tira, Święto Niepodległości Mołdawii",
+  "0828": "Święto Lotnictwa Polskiego",
+  "0829": "Dzień Strażnika Gminnego i Miejskiego",
+  "0830": "Międzynarodowy Dzień Pamięci Osób Zaginionych",
+  "0831": "Dzień Solidarności i Wolności, Dzień Blogów",
+  "0901": "Pierwszy Dzień Szkoły, Dzień Weterana Walk o Niepodległość",
+  "0902":
+    "Wspomnienie Ho Chi Minha, Międzynarodowy Dzień Dużego Rozmiaru, Dzień Śliwki",
+  "0903": "Dzień Wieżowców",
+  "0904": "Dzień Imigranta (Argentyna), Wspomnienie św. Bonifacego i Filemona",
+  "0905": "Międzynarodowy Dzień Dobroczynności",
+  "0906": "Święto niepodległości Eswatini, Dzień Walki z Prokrastynacją",
+  "0907": "Dzień Zwycięstwa w Mozambiku",
+  "0908": "Dzień Dobrej Wiadomości, Dzień Walki z Analfabetyzmem, Dzień",
+  "0909":
+    "Międzynarodowy Dzień Urody, Rocznica powstania Koreańskiej Republiki Ludowo-Demokratycznej, Dzień Testera Oprogramowania",
+  "0910": "Światowy Dzień Zapobiegania Samobójstwom",
+  "0911": "Dzień Histerii i Egocentryzmu w USA",
+  "0912":
+    "Dzień Wojsk Lądowych, Dzień Narodów Zjednoczonych dla Współpracy Południe-Południe",
+  "0913": "Dzień Całowania Chłopaków w Usta",
+  "0914": "Wspomnienie Podwyższenia Krzyża Świętego",
+};

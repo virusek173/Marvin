@@ -1,4 +1,1 @@
-export type HolidayObject = {
-  date: string;
-  holiday: string;
-};
+export type HolidayObject = Record<string, string>;

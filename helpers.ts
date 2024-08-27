@@ -1,4 +1,4 @@
-import { holidayData } from "./data.js";
+import { holidayObject } from "./data.js";
 import { HolidayObject } from "./model.js";
 
 export const getFormattedDate = (today: Date): string => {
@@ -10,19 +10,19 @@ export const getFormattedDate = (today: Date): string => {
 
 export const getHolidayOfTheDay = (
   day: string,
-  holidayData: Array<HolidayObject>
+  _holidayObject: HolidayObject
 ): string | undefined => {
-  const holidayObject = Object.values(holidayData).find((o) => o.date === day);
+  const holiday = _holidayObject[day];
 
-  return holidayObject?.holiday;
+  return holiday;
 };
 
-export const getHolidayData = () => holidayData;
+export const getHolidayData = (): HolidayObject => holidayObject;
 
 export const getTodayHoliday = (): string | undefined => {
   const today = new Date();
   const todayString = getFormattedDate(today);
-  const holidayData = getHolidayData();
+  const _holidayObject = getHolidayData();
 
-  return getHolidayOfTheDay(todayString, holidayData);
+  return getHolidayOfTheDay(todayString, _holidayObject);
 };
