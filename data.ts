@@ -7,8 +7,7 @@ export const holidayObject: HolidayObject = {
   "0830": "Międzynarodowy Dzień Pamięci Osób Zaginionych",
   "0831": "Dzień Solidarności i Wolności, Dzień Blogów",
   "0901": "Pierwszy Dzień Szkoły, Dzień Weterana Walk o Niepodległość",
-  "0902":
-    "Wspomnienie Ho Chi Minha, Międzynarodowy Dzień Dużego Rozmiaru, Dzień Śliwki",
+  "0902": "Międzynarodowy Dzień Dużego Rozmiaru, Dzień Śliwki",
   "0903": "Dzień Wieżowców",
   "0904": "Dzień Imigranta (Argentyna), Wspomnienie św. Bonifacego i Filemona",
   "0905": "Międzynarodowy Dzień Dobroczynności",
@@ -23,4 +22,6 @@ export const holidayObject: HolidayObject = {
     "Dzień Wojsk Lądowych, Dzień Narodów Zjednoczonych dla Współpracy Południe-Południe",
   "0913": "Dzień Całowania Chłopaków w Usta",
   "0914": "Wspomnienie Podwyższenia Krzyża Świętego",
+  "0915":
+    " Dzień Prostaty, Międzynarodowy Dzień Demokracji, Dzień Olewania Systemu, Dzień Opakowań, Międzynarodowy Dzień Kropki (Święto Kreatywności)",
 };
