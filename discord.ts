@@ -46,6 +46,7 @@ const messageResponseFactory = (response: any) => ({
 
 export const discordMarvinInit = (
   client: any,
+  date: string,
   holiday: string | undefined,
   withInitMessage: boolean = true
 ) => {
@@ -56,7 +57,7 @@ export const discordMarvinInit = (
 
   client.on("ready", async () => {
     console.log(`Logged in as ${client.user.tag}!`);
-    systemContext = getInitContext(holiday, MARVIN_ID);
+    systemContext = getInitContext(date, holiday, MARVIN_ID);
     if (!withInitMessage) return;
     const channel = client.channels.cache.get(CHANNEL_ID);
     const message = await openAiInteraction(systemContext);

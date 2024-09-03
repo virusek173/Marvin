@@ -8,6 +8,14 @@ export const getFormattedDate = (today: Date): string => {
   return [(mm > 9 ? "" : "0") + mm, (dd > 9 ? "" : "0") + dd].join("");
 };
 
+export const getFormattedDateForPrompt = (today: Date): string => {
+  var rr = today.getFullYear();
+  var mm = today.getMonth() + 1;
+  var dd = today.getDate();
+
+  return [rr, (mm > 9 ? "" : "0") + mm, (dd > 9 ? "" : "0") + dd].join(".");
+};
+
 export const getHolidayOfTheDay = (
   day: string,
   _holidayObject: HolidayObject
@@ -19,10 +27,16 @@ export const getHolidayOfTheDay = (
 
 export const getHolidayData = (): HolidayObject => holidayObject;
 
-export const getTodayHoliday = (): string | undefined => {
+export const getTodayHoliday = (): {
+  date: string;
+  holiday: string | undefined;
+} => {
   const today = new Date();
   const todayString = getFormattedDate(today);
   const _holidayObject = getHolidayData();
 
-  return getHolidayOfTheDay(todayString, _holidayObject);
+  return {
+    date: getFormattedDateForPrompt(today),
+    holiday: getHolidayOfTheDay(todayString, _holidayObject),
+  };
 };

@@ -1,4 +1,4 @@
-import { getTodayHoliday } from "./helpers.js";
+import { getFormattedDateForPrompt, getTodayHoliday } from "./helpers.js";
 import { discordMarvinInit } from "./discord.js";
 import cron from "node-cron";
 import { Client, GatewayIntentBits } from "discord.js";
@@ -15,13 +15,13 @@ const croneOptions = {
 
 const init = async (withInitMessage: boolean | undefined = true) => {
   try {
-    const holiday = getTodayHoliday();
+    const { date, holiday } = getTodayHoliday();
     console.log("Today's holiday: ", holiday);
     if (client) client.destroy();
     client = new Client({
       intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
     });
-    discordMarvinInit(client, holiday, withInitMessage);
+    discordMarvinInit(client, date, holiday, withInitMessage);
   } catch (error: any) {
     console.log("Unexpected Error: ", error?.message);
   }

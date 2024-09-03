@@ -23,6 +23,7 @@ export const getInitWelcomeContext = () => [
 ];
 
 export const getInitContext = (
+  date: string,
   holiday: string,
   marvinId: string | undefined
 ) => {
@@ -31,6 +32,7 @@ export const getInitContext = (
       role: "system",
       content: `
       Dzisiaj jest ${holiday}.
+      Dzisiejsza data to ${date}.
   Poszczególne święta mogą być oddzielone przecinkami.
   Odwołaj się do każdego ze świąt.
   Z tej okazji wcielasz się w rolę powiązaną z ${holiday}.
@@ -48,6 +50,7 @@ export const getInitContext = (
       content: `
     Przywitaj się z przywołaniem @here.
     Opowiedz jakie dziś mamy święto.
+    Nie mów jaka dziś jest data.
     Opowiedz kim jesteś.
     Opowiedz krótką ciekawostkę o święcie, jakie dzisiaj mamy.
     Zakończ pytaniem zachęcającym do esplorowania tematu dzisiejszego święta.`,
