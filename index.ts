@@ -9,6 +9,10 @@ const croneMap = {
   SIX_AM: "0 6 * * *",
 };
 
+const croneOptions = {
+  timezone: "UTC",
+};
+
 const init = async (withInitMessage: boolean | undefined = true) => {
   try {
     const holiday = getTodayHoliday();
@@ -28,4 +32,4 @@ init(false);
 const croneTime = croneMap.SIX_AM;
 
 console.log(`Uruchamiam crone z czasem: ${croneTime}`);
-cron.schedule(croneTime, () => init());
+cron.schedule(croneTime, () => init(), croneOptions);

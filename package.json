@@ -7,7 +7,8 @@
   "scripts": {
     "test": "jest",
     "test-watch": "jest --watch",
-    "marvin": "tsc & node dest"
+    "marvin": "tsc & node dest",
+    "tsc": "tsc"
   },
   "author": "",
   "license": "ISC",
