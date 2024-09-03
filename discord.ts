@@ -59,9 +59,9 @@ export const discordMarvinInit = (
     systemContext = getInitContext(holiday, MARVIN_ID);
     if (!withInitMessage) return;
     const channel = client.channels.cache.get(CHANNEL_ID);
-    // systemContext = getInitWelcomeContext();
     const message = await openAiInteraction(systemContext);
     context = [message];
+    systemContext.pop();
 
     channel.send(message.content);
   });
