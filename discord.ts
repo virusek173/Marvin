@@ -2,8 +2,9 @@ import dotenv from "dotenv";
 import { Client, GatewayIntentBits } from "discord.js";
 import {
   openAiInteraction,
-  getInitContext,
+  getSystemContext,
   getInitWelcomeContext,
+  getFirstUserMessage,
 } from "./openai.js";
 import "./propotypes.js";
 
@@ -37,7 +38,6 @@ const mapGlobalNameNameToRealName = new Proxy(
 dotenv.config();
 const { MARVIN_ID, CLIENT_TOKEN, CHANNEL_ID } = process.env;
 let context: Array<any> = [];
-let systemContext: Array<any> = [];
 
 const messageResponseFactory = (response: any) => ({
   role: "user",
@@ -57,12 +57,16 @@ export const discordMarvinInit = (
 
   client.on("ready", async () => {
     console.log(`Logged in as ${client.user.tag}!`);
-    systemContext = getInitContext(date, holiday, MARVIN_ID);
+    const systemContext = getSystemContext(date, holiday, MARVIN_ID);
+    const firstUserMessage = getFirstUserMessage();
+
     if (!withInitMessage) return;
     const channel = client.channels.cache.get(CHANNEL_ID);
-    const message = await openAiInteraction(systemContext);
+    const message = await openAiInteraction([
+      ...systemContext,
+      ...firstUserMessage,
+    ]);
     context = [message];
-    systemContext.pop();
 
     channel.send(message.content);
   });
@@ -77,6 +81,7 @@ export const discordMarvinInit = (
         );
 
         context.pushWithLimit(userResponse);
+        const systemContext = getSystemContext(date, holiday, MARVIN_ID);
         const assResponse = await openAiInteraction([
           ...systemContext,
           ...context,
