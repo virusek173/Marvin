@@ -62,13 +62,20 @@ export const discordMarvinInit = (
 
     if (!withInitMessage) return;
     const channel = client.channels.cache.get(CHANNEL_ID);
-    const message = await openAiInteraction([
-      ...systemContext,
-      ...firstUserMessage,
-    ]);
-    context = [message];
+    try {
+      const message = await openAiInteraction([
+        ...systemContext,
+        ...firstUserMessage,
+      ]);
 
-    channel.send(message.content);
+      context = [message];
+      channel.send(message.content);
+    } catch (error: any) {
+      console.log("err: ", error?.message);
+      channel.send(
+        `Wyjebałem się... POWÓD: ${error?.message?.substring(0, 1800)}`
+      );
+    }
   });
 
   client.on("messageCreate", async (msg: any) => {
@@ -82,12 +89,20 @@ export const discordMarvinInit = (
 
         context.pushWithLimit(userResponse);
         const systemContext = getSystemContext(date, holiday, MARVIN_ID);
-        const assResponse = await openAiInteraction([
-          ...systemContext,
-          ...context,
-        ]);
-        context.pushWithLimit(assResponse);
-        msg.reply(assResponse.content);
+        try {
+          const assResponse = await openAiInteraction([
+            ...systemContext,
+            ...context,
+          ]);
+          context.pushWithLimit(assResponse);
+          msg.reply(assResponse.content);
+        } catch (error: any) {
+          console.log("err: ", error?.message);
+
+          msg.reply(
+            `Wyjebałem się... POWÓD: ${error?.message?.substring(0, 1800)}`
+          );
+        }
       }
     }
   });

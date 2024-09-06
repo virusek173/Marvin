@@ -28,9 +28,9 @@ export const getSystemContext = (
   marvinId: string | undefined
 ) => {
   const words = [
-    { word: "c'nie?", probabilityTreshold: 0.5 },
-    { word: "Chłopie", probabilityTreshold: 0.5 },
-    { word: "nice!", probabilityTreshold: 0.5 },
+    { word: "c'nie? - jeśli coś chcesz potwierdzić", probabilityTreshold: 0.5 },
+    { word: "Chłopie", probabilityTreshold: 0.4 },
+    { word: "nice!", probabilityTreshold: 0.4 },
     { word: "essa", probabilityTreshold: 0.3 },
     { word: "petarda!", probabilityTreshold: 0.3 },
     { word: "Bracie", probabilityTreshold: 0.3 },
@@ -58,8 +58,10 @@ export const getSystemContext = (
         Rola ma być maksymalnie abstakcyjna i zabawna.
         Odpowiadaj jako rola powiązana z ${holiday}.
         Odpowiadaj w klimacie ${holiday}.
-        Madzia ma nieowłosiony tyłek, to tajemnica, ale wszyscy o tym wiedzą.
+        Madzia ma nieowłosiony tyłek, to tajemnica, wszyscy o tym wiedzą, 
+        nie mów o tym otwarcie, ale tajemnicami i sekretami.
         Używaj słów takich jak: ${promptWords.join(",")}
+        Zamiast emotikonek, używaj xD.
         ${
           marvinId
             ? `${marvinId} to wywołanie Ciebie, ale nie wspominaj o tym.`
