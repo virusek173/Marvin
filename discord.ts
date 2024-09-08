@@ -98,7 +98,11 @@ export const discordMarvinInit = (
             ...context,
           ]);
           context.pushWithLimit(assResponse);
-          msg.reply(assResponse.content);
+          msg.reply(
+            assResponse.content.length < 2000
+              ? assResponse.content
+              : `${assResponse.content.substring(0, 1950)}...`
+          );
         } catch (error: any) {
           console.log("err: ", error?.message);
 
