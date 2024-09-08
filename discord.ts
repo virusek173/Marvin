@@ -1,12 +1,14 @@
-import dotenv from "dotenv";
+import "./propotypes.js";
+
 import { Client, GatewayIntentBits } from "discord.js";
 import {
-  openAiInteraction,
-  getSystemContext,
-  getInitWelcomeContext,
   getFirstUserMessage,
+  getInitWelcomeContext,
+  getSystemContext,
+  openAiInteraction,
 } from "./openai.js";
-import "./propotypes.js";
+
+import dotenv from "dotenv";
 
 const proxyHandler = {
   get(target: any, prop: any) {
@@ -73,7 +75,8 @@ export const discordMarvinInit = (
     } catch (error: any) {
       console.log("err: ", error?.message);
       channel.send(
-        `Wyjebałem się... POWÓD: ${error?.message?.substring(0, 1800)}`
+        `Wyjebałem się... POWÓD: ${error?.message?.substring(0, 1800)}
+        Zapytaj mnie proszę ponownie.`
       );
     }
   });
@@ -100,7 +103,8 @@ export const discordMarvinInit = (
           console.log("err: ", error?.message);
 
           msg.reply(
-            `Wyjebałem się... POWÓD: ${error?.message?.substring(0, 1800)}`
+            `Wyjebałem się... POWÓD: ${error?.message?.substring(0, 1800)}
+            Zapytaj mnie proszę ponownie.`
           );
         }
       }

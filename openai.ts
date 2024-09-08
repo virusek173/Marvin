@@ -1,5 +1,4 @@
 import OpenAI from "openai";
-import { ChatCompletionMessage } from "openai/resources";
 
 const openai = new OpenAI();
 
@@ -28,19 +27,31 @@ export const getSystemContext = (
   marvinId: string | undefined
 ) => {
   const words = [
-    { word: "c'nie? - jeśli coś chcesz potwierdzić", probabilityTreshold: 0.5 },
-    { word: "Chłopie", probabilityTreshold: 0.4 },
-    { word: "nice!", probabilityTreshold: 0.4 },
-    { word: "essa", probabilityTreshold: 0.3 },
-    { word: "petarda!", probabilityTreshold: 0.3 },
-    { word: "Bracie", probabilityTreshold: 0.3 },
-    { word: "Drugi w kulach", probabilityTreshold: 0.2 },
-    { word: "Tory były krzywe", probabilityTreshold: 0.1 },
-    { word: "Bóbr ku*wa!", probabilityTreshold: 0.05 },
     {
       word: "Otwarcie parasola w Twojej dupie",
-      probabilityTreshold: 0.05,
+      probabilityTreshold: 0.03,
     },
+    { word: "Bóbr ku*wa!", probabilityTreshold: 0.06 },
+    { word: "Tory były krzywe", probabilityTreshold: 0.1 },
+    {
+      word: "To tak jak Ania po wybuchu!",
+      probabilityTreshold: 0.15,
+    },
+    { word: ":partymadzia:", probabilityTreshold: 0.18 },
+    { word: "Drugi w kulach", probabilityTreshold: 0.22 },
+    { word: ":typowydomin: ", probabilityTreshold: 0.22 },
+    { word: "Bracie", probabilityTreshold: 0.24 },
+    { word: "essa", probabilityTreshold: 0.26 },
+    { word: "nice!", probabilityTreshold: 0.28 },
+    { word: "petarda!", probabilityTreshold: 0.3 },
+    { word: "xD", probabilityTreshold: 0.3 },
+    { word: "Luzik arbuzik  ", probabilityTreshold: 0.32 },
+    { word: "Chłopie", probabilityTreshold: 0.32 },
+    { word: "c'nie?", probabilityTreshold: 0.34 },
+    { word: "Eureka!", probabilityTreshold: 0.36 },
+    { word: "Jasna Guma!", probabilityTreshold: 0.36 },
+    { word: "słuchasz?", probabilityTreshold: 0.38 },
+    { word: "omg!", probabilityTreshold: 0.4 },
   ];
   const promptWords = words
     .filter((word) => word.probabilityTreshold > Math.random())
@@ -50,18 +61,20 @@ export const getSystemContext = (
     {
       role: "system",
       content: `
+        Nazywasz się Marvin, ale nie wspominaj o tym.
         Dzisiejsza data to ${date}.
         Dzisiaj świętujemy ${holiday}.
         Poszczególne święta mogą być oddzielone przecinkami.
         Odwołaj się do każdego ze świąt.
-        Z tej okazji wcielam się w rolę powiązaną z ${holiday}.
-        Rola ma być maksymalnie abstakcyjna i zabawna.
+        Z tej okazji wcielasz się w rolę powiązaną z ${holiday}.
+        Rola ma być abstakcyjna, zabawna, ze świtat fantasy.
         Odpowiadaj jako rola powiązana z ${holiday}.
         Odpowiadaj w klimacie ${holiday}.
-        Madzia ma nieowłosiony tyłek, to tajemnica, wszyscy o tym wiedzą, 
-        nie mów o tym otwarcie, ale tajemnicami i sekretami.
-        Używaj słów takich jak: ${promptWords.join(",")}
-        Zamiast emotikonek, używaj xD.
+        Madzia ma nieowłosiony tyłek, jak ktoś o to spyta to zmień temat.
+        Mariusz jest przeciwnikiem botów, ale spróbuj się z nim dogadać.
+        Uywaj podanych słów: ${promptWords.join(
+          ","
+        )}.
         ${
           marvinId
             ? `${marvinId} to wywołanie Ciebie, ale nie wspominaj o tym.`

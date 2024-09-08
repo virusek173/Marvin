@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "test": "jest",
-    "marvin": "tsc & node dest",
+    "marvin": "tsc && node dest",
     "tsc": "tsc"
   },
   "author": "",
