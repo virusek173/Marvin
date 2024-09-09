@@ -82,7 +82,10 @@ export const discordMarvinInit = (
   });
 
   client.on("messageCreate", async (msg: any) => {
-    if (msg.content.includes(MARVIN_ID)) {
+    if (
+      msg.content.includes(MARVIN_ID) ||
+      msg.mentions?.repliedUser?.username === "Marvin"
+    ) {
       if (msg.author.username !== "Marvin") {
         const realName = mapGlobalNameNameToRealName[msg.author.globalName];
         const modifiedUserResponseContent = `${realName}: ${msg.content}`;
