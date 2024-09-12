@@ -50,6 +50,7 @@ export const discordMarvinInit = (
   client: any,
   date: string,
   holiday: string | undefined,
+  personContext: string,
   withInitMessage: boolean = true
 ) => {
   if (!holiday) {
@@ -59,11 +60,20 @@ export const discordMarvinInit = (
 
   client.on("ready", async () => {
     console.log(`Logged in as ${client.user.tag}!`);
-    const systemContext = getSystemContext(date, holiday, MARVIN_ID);
+    const systemContext = getSystemContext(
+      date,
+      holiday,
+      MARVIN_ID,
+      personContext
+    );
     const firstUserMessage = getFirstUserMessage();
 
-    if (!withInitMessage) return;
     const channel = client.channels.cache.get(CHANNEL_ID);
+    if (!withInitMessage) {
+      channel.send(`Dzień dobry! Nie było mnie, ale wstałem...`);
+
+      return;
+    }
     try {
       const message = await openAiInteraction([
         ...systemContext,
@@ -94,7 +104,12 @@ export const discordMarvinInit = (
         );
 
         context.pushWithLimit(userResponse);
-        const systemContext = getSystemContext(date, holiday, MARVIN_ID);
+        const systemContext = getSystemContext(
+          date,
+          holiday,
+          MARVIN_ID,
+          personContext
+        );
         try {
           const assResponse = await openAiInteraction([
             ...systemContext,

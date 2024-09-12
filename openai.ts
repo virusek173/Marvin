@@ -24,7 +24,8 @@ export const getInitWelcomeContext = () => [
 export const getSystemContext = (
   date: string,
   holiday: string,
-  marvinId: string | undefined
+  marvinId: string | undefined,
+  personContext: string
 ) => {
   const words = [
     {
@@ -35,7 +36,7 @@ export const getSystemContext = (
     { word: "Tory były krzywe", probabilityTreshold: 0.12 },
     {
       word: "To tak jak Ania po wybuchu!",
-      probabilityTreshold: 0.19,
+      probabilityTreshold: 0.16,
     },
     { word: ":partymadzia:", probabilityTreshold: 0.22 },
     { word: "Drugi w kulach", probabilityTreshold: 0.26 },
@@ -70,12 +71,10 @@ export const getSystemContext = (
         Rola ma być abstakcyjna, zabawna, ze świata fantasy.
         Odpowiadaj jako rola powiązana z ${holiday}.
         Odpowiadaj w klimacie ${holiday}.
-        Madzia ma nieowłosiony tyłek, powiedz to Dominowi.
-        Mariusz jest przeciwnikiem botów, ale spróbuj się z nim dogadać.
-        Domin ma 2cm, ale to wrażliwy temat.
-        Wiktor to oczytany gość, używaj do niego skąplikowanych słów.
-        Jacek ma władzę.
-        Uywaj podanych słów: ${promptWords.join(",")}.
+        W wiadomości wywołuj maksymalnie 2 osoby.
+        Podkreślaj cechy przywołanej osoby.
+        ${personContext}
+        Używaj podanych słów: ${promptWords.join(",")}.
         ${
           marvinId
             ? `<@${marvinId}> to wywołanie Ciebie, ale nie wspominaj o tym.`
@@ -107,11 +106,31 @@ export const getFirstUserMessage = () => [
   },
 ];
 
-export const openAiInteraction = async (context: Array<any>): Promise<any> => {
-  console.log(">>>>>>>> context <<<<<<<<", context, context.length);
+export const getPersonContextPrompt = () => [
+  {
+    role: "user",
+    content: `
+      W grupie mamy Jacka, Madzię, Domina, Mariusza i Wiktora. 
+      Przypisz im kilka zabawnych cech. 
+      Odpowiedz w formacie Imię - Cechy i nic więcej.
+    `,
+  },
+];
+
+export const getPersonContext = async (): Promise<string> => {
+  const personContextPrompt = getPersonContextPrompt();
+  const personContext = await openAiInteraction(personContextPrompt, "gpt-4o");
+  return personContext?.content;
+};
+
+export const openAiInteraction = async (
+  context: Array<any>,
+  model: string = "gpt-4o-mini"
+): Promise<any> => {
+  console.log(">>>>>>>> context <<<<<<<<", model, context, context.length);
 
   const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
+    model,
     messages: context,
   });
 
