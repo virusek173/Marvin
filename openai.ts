@@ -41,10 +41,10 @@ export const getSystemContext = (
     { word: ":partymadzia:", probabilityTreshold: 0.22 },
     { word: "Drugi w kulach", probabilityTreshold: 0.26 },
     { word: ":typowydomin: ", probabilityTreshold: 0.26 },
+    { word: "Luzik arbuzik  ", probabilityTreshold: 0.28 },
     { word: "Bracie", probabilityTreshold: 0.28 },
     { word: "essa", probabilityTreshold: 0.3 },
     { word: "nice!", probabilityTreshold: 0.32 },
-    { word: "Luzik arbuzik  ", probabilityTreshold: 0.32 },
     { word: "petarda!", probabilityTreshold: 0.34 },
     { word: "xD", probabilityTreshold: 0.34 },
     { word: "Chłopie", probabilityTreshold: 0.36 },
@@ -71,6 +71,8 @@ export const getSystemContext = (
         Rola ma być abstakcyjna, zabawna, ze świata fantasy.
         Odpowiadaj jako rola powiązana z ${holiday}.
         Odpowiadaj w klimacie ${holiday}.
+        Madzia ma nieowłosiony tyłek, ale to tajemnica o której wszyscy wiedzą.
+        Basia tańczy i ma długi blond warkocz.
         W wiadomości wywołuj maksymalnie 2 osoby.
         Podkreślaj cechy przywołanej osoby.
         ${personContext}
@@ -86,6 +88,7 @@ export const getSystemContext = (
         Mariusz(<@640536326164185121>)
         Wiktor(<@219778599106904075>)
         Madzia(<@692087500465766442>)
+        Basia(<@799668326979731517>)
   `,
     },
   ];
@@ -110,7 +113,7 @@ export const getPersonContextPrompt = () => [
   {
     role: "user",
     content: `
-      W grupie mamy Jacka, Madzię, Domina, Mariusza i Wiktora. 
+      W grupie mamy Jacka, Madzię, Domina, Mariusza, Wiktora i Basię. 
       Przypisz im kilka zabawnych cech. 
       Odpowiedz w formacie Imię - Cechy i nic więcej.
     `,

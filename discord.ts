@@ -49,15 +49,11 @@ const messageResponseFactory = (response: any) => ({
 export const discordMarvinInit = (
   client: any,
   date: string,
-  holiday: string | undefined,
+  _holiday: string | undefined,
   personContext: string,
   withInitMessage: boolean = true
 ) => {
-  if (!holiday) {
-    console.log("Holiday undefined Error.");
-    return null;
-  }
-
+  const holiday = _holiday ? _holiday : "Brak święta";
   client.on("ready", async () => {
     console.log(`Logged in as ${client.user.tag}!`);
     const systemContext = getSystemContext(

@@ -24,4 +24,21 @@ export const holidayObject: HolidayObject = {
   "0914": "Wspomnienie Podwyższenia Krzyża Świętego",
   "0915":
     " Dzień Prostaty, Międzynarodowy Dzień Demokracji, Dzień Olewania Systemu, Dzień Opakowań, Międzynarodowy Dzień Kropki (Święto Kreatywności)",
+  "0916": "Światowy Dzień Krwiodawstwa",
+  "0917":
+    "Dzień Pozytywnie Zakręconych, Święto Niepodległości Gabonu i Indonezji",
+  "0919": "Światowy Dzień Choroby Żołądkowej, Dzień Pomocy Humanitarnej",
+  "0920":
+    "Dzień Komara, Dzień Przepieprzonych z Hukiem Lat, Dzień Wyznawania Miłośc",
+  "0921": "Dzień Ninoy Aquino (Filipiny), imieniny Męcimira",
+  "0922": "W Światowy Dzień Mleka Roślinnego",
+  "0923":
+    "Europejski Dzień Pamięci Ofiar Nazizmu i Stalinizmu, Międzynarodowy Dzień Pamięci o Handlu Niewolnikami i jego Zniesieniu",
+  "0924": "Dzień Windowsa",
+  "0925": "124. rocznica śmierci Nietzschego",
+  "0927": "Dzień Tira, Święto Niepodległości Mołdawii",
+  "0928": "Święto Lotnictwa Polskiego",
+  "0929": "Dzień Strażnika Gminnego i Miejskiego",
+  "0930": "Międzynarodowy Dzień Pamięci Osób Zaginionych",
+  "0931": "Dzień Solidarności i Wolności, Dzień Blogów",
 };
