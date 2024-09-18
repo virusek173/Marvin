@@ -30,7 +30,7 @@ const init = async (withInitMessage: boolean | undefined = true) => {
   }
 };
 
-init(true);
+init(false);
 
 const croneTime = croneMap.SIX_AM;
 

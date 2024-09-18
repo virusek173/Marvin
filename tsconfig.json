@@ -14,5 +14,8 @@
     // Tell ts-node CLI to install the --loader automatically, explained below
     "esm": true
   },
-  "exclude": ["node_modules", "__tests__"]
+  "exclude": ["node_modules", "__tests__"],
+   "include": [
+	        "./src/"
+	]
 }
