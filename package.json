@@ -2,16 +2,18 @@
   "name": "marvin",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "/src/index.js",
   "type": "module",
   "scripts": {
     "test": "jest",
-    "marvin": "tsc && node dest",
+    "marvin": "tsc && node dest/src",
+    "scrape": "tsc && node dest/scrape",
     "tsc": "tsc"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "axios": "^1.7.7",
     "discord.js": "^14.15.3",
     "dotenv": "^16.4.5",
     "node-cron": "^3.0.3",
@@ -19,8 +21,10 @@
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",
+    "@types/jsdom": "^21.1.7",
     "@types/node-cron": "^3.0.11",
     "jest": "^29.7.0",
+    "jsdom": "^25.0.0",
     "ts-jest": "^29.2.5",
     "typescript": "^5.5.4"
   }

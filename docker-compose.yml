@@ -1,0 +1,7 @@
+services:
+  marvin:
+    env_file:
+      - ./.env
+    build:
+      context: ./
+      dockerfile: ./Dockerfile

@@ -66,7 +66,7 @@ export const discordMarvinInit = (
 
     const channel = client.channels.cache.get(CHANNEL_ID);
     if (!withInitMessage) {
-      channel.send(`Dzień dobry! Nie było mnie, ale wstałem...`);
+      channel.send(`Dzień dobry! Nie było mnie, ale wstałem z... Dockera!`);
 
       return;
     }
