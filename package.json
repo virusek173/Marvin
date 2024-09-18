@@ -6,9 +6,10 @@
   "type": "module",
   "scripts": {
     "test": "jest",
-    "marvin": "tsc && node dest/src",
-    "scrape": "tsc && node dest/scrape",
-    "tsc": "tsc"
+    "marvin:build": "tsc",
+    "marvin:run": "node dest/src",
+    "marvin": "run-s marvin:build marvin:run",
+    "scrape": "tsc && node dest/scrape"
   },
   "author": "",
   "license": "ISC",
@@ -17,6 +18,7 @@
     "discord.js": "^14.15.3",
     "dotenv": "^16.4.5",
     "node-cron": "^3.0.3",
+    "npm-run-all": "^4.1.5",
     "openai": "^4.56.0"
   },
   "devDependencies": {
