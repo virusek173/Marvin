@@ -41,4 +41,49 @@ export const holidayObject: HolidayObject = {
   "0929": "Dzień Strażnika Gminnego i Miejskiego",
   "0930": "Międzynarodowy Dzień Pamięci Osób Zaginionych",
   "0931": "Dzień Solidarności i Wolności, Dzień Blogów",
+
+  "1001":
+    "Międzynarodowy Dzień Wegetarianizmu, Międzynarodowy Dzień Pracownika Ochrony Zdrowia, Międzynarodowy Dzień Osób Starszych, Światowy Dzień Ptaków, Międzynarodowy Dzień Muzyki, Międzynarodowy Dzień Walki z Wirusowym Zapaleniem Wątroby, Armeński Dzień Nauczycieli, Boliwski Dzień Biblii, Święto Niepodległości Cypru, Święto Niepodległości Nigerii, Święto Proklamowania Chińskiej Republiki Ludowej, Święto Zjednoczenia Kamerunu, Singapurski Dzień Dziecka, Święto Tuvalu, wspomnienie św. Romana Pieśniarza, Ogólnopolskim Dniem Tornistra",
+  "1002":
+    "Międzynarodowy Dzień bez Przemocy, Dzień Aniołów Stróżów, Światowy Dzień Zwierząt Hodowlanych",
+  "1003": "Dzień bez Kamizelki Kuloodpornej, Święto Jedności Niemiec",
+  "1004":
+    "Międzynarodowy Dzień Zwierząt, Narodowy Dzień Wódki w USA, Dzień Udanej Współpracy",
+  "1005": "Międzynarodowy Dzień Belfra-Tępiciela",
+  "1006": "Wmyśl jakiś śmieszny dzień",
+  "1007": "Dzień Matki Bożej Różańcowej",
+  "1008": "Dzień Marynarki Wojennej Peru",
+  "1009": "Światowy Dzień Poczty i Znaczka Pocztowego",
+  "1010":
+    "Europejski Dzień Przeciw Karze Śmierci, Światowy Dzień Drzewa, Dzień Zdrowia Psychicznego",
+  "1011":
+    "Dzień coming outu (Dzień Wychodzenia z Szafy), Międzynarodowy Dzień Dziewcząt",
+  "1012": "Międzynarodowy Dzień Reumatyzmu, Dzień Bezpiecznego Komputera",
+  "1013": "Międzynarodowy Dzień Bez Stanika",
+  "1014":
+    "Międzynarodowy Dzień Zmniejszania Skutków Klęsk Żywiołowych, Dzień Edukacji Narodowej",
+  "1015":
+    "Światowy Dzień Białej Laski, Dzień Dziecka Utraconego, Europejski Dzień Walki z Rakiem Piersi, Światowy Dzień Mycia Rąk, Święto Wojsk Radiotechnicznych, Międzynarodowy Dzień Kobiet Wiejskich",
+  "1016": "Światowy Dzień Żywności, Dzień Papieża Jana Pawła II",
+  "1017": "Międzynarodowy Dzień Walki z Ubóstwem",
+  "1018": "Dzień Łącznościowca, Dzień Poczty Polskiej",
+  "1019": "Dzień Normalizacji",
+  "1020":
+    "Międzynarodowy Dzień Kontrolera Ruchu Lotniczego, Światowy Dzień Statystyki, Europejski Dzień Seniora, Dzień Leniwca",
+  "1021":
+    "Dzień Ndadaye (Burundi), Dzień Bez Skarpetek, Święto Sił Zbrojnych Hondurasu",
+  "1022": "Światowy Dzień Osób Jąkających, Dzień Caps Locka",
+  "1023": "Dzień Stałej Avogadra, Dzień Mola",
+  "1024":
+    "Międzynarodowe Święto Roweru, Międzynarodowe Święto Uciekających na Rowerze, Światowy Dzień Flaczków",
+  "1025":
+    "Dzień Kundelka, Dzień Ustawy o Ochronie Zwierząt, Dzień Retrocesji Tajwanu, Dzień Makaronu, Światowy Dzień Niskorosłości",
+  "1026": "Światowy Dzień Donacji i Transplantacji, Święto Narodowe w Austrii",
+  "1027":
+    "Światowy Dzień Dziedzictwa Audiowizualnego, Święto Niepodległości Turkmenistanu, Dzień Widoczności Lesbijek",
+  "1028": "Dzień Odpoczynku dla Zszarganych Nerwów",
+  "1029":
+    "Światowy Dzień Udaru Mózgu, Dzień Proklamowania Republiki, Cumhryet Bayrani",
+  "1030": "Dzień Spódnicy, Święto Napojów Wyskokowych",
+  "1031": "Światowy Dzień Oszczędzania, Światowy Dzień Rozrzutności, Halloween",
 };

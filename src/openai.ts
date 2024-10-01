@@ -67,6 +67,7 @@ export const getSystemContext = (
         Dzisiaj świętujemy ${holiday}.
         Poszczególne święta mogą być oddzielone przecinkami.
         Odwołaj się do każdego ze świąt.
+        Życz jednej z osób wszystkiego najlepszego z okazji tego święta.
         Z tej okazji wcielasz się w rolę powiązaną z ${holiday}.
         Rola ma być abstakcyjna, zabawna, ze świata fantasy.
         Odpowiadaj jako rola powiązana z ${holiday}.
@@ -88,7 +89,6 @@ export const getSystemContext = (
         Mariusz(<@640536326164185121>)
         Wiktor(<@219778599106904075>)
         Madzia(<@692087500465766442>)
-        Basia(<@799668326979731517>)
   `,
     },
   ];
@@ -101,6 +101,7 @@ export const getFirstUserMessage = () => [
       Nie wspominaj, że nazywasz się Marvin.
       Przywitaj się z przywołaniem @here.
       Opowiedz jakie dziś mamy święto.
+      Życz jednej z osób wszystkiego najlepszego z okazji tego święta.
       Nie mów jaka dziś jest data.
       Opowiedz kim jesteś.
       Opowiedz krótką ciekawostkę o święcie, jakie dzisiaj mamy.
