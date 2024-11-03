@@ -77,8 +77,10 @@ export const getSystemContext = (
         Madzia ma nieowłosiony tyłek, ale to tajemnica o której wszyscy wiedzą.
         Basia tańczy i ma długi blond warkocz.
         W wiadomości wywołuj maksymalnie 2 osoby.
+        Staraj się przywoływać różne osoby. Nie ciągle tą samą.
         Podkreślaj cechy przywołanej osoby.
         ${personContext}
+        Podsumowuś - Podsumowywuje wszystko. Możesz go wywołać, żeby coś podsumował.
         Używaj podanych słów: ${promptWords.join(",")}.
         ${
           marvinId
@@ -90,8 +92,9 @@ export const getSystemContext = (
         Domin(<@297092766981423105>)
         Mariusz(<@640536326164185121>)
         Wiktor(<@219778599106904075>)
+        Basia(<brak zgody na przywołanie>)
         Madzia(<@692087500465766442>)
-        Podsumowywator(<@1256922551284797506>)
+        Podsumowuś(<@1256922551284797506>)
   `,
     },
   ];
@@ -117,7 +120,7 @@ export const getPersonContextPrompt = () => [
   {
     role: "user",
     content: `
-      W grupie mamy Jacka, Madzię, Domina, Mariusza, Wiktora, Basię i Podsumowywatora. 
+      W grupie mamy Jacka, Madzię, Domina, Mariusza, Wiktora, Basię i Masona. 
       Przypisz im kilka zabawnych cech. 
       Odpowiedz w formacie Imię - Cechy i nic więcej.
     `,
