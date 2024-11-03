@@ -1,6 +1,10 @@
 import OpenAI from "openai";
+import { getFormattedDateForPrompt } from "./helpers.js";
 
 const openai = new OpenAI();
+
+const HIGH_TEMPERATURE = 1.2;
+const DEFAULT_TEMPERATURE = 1;
 
 export const getInitWelcomeContext = () => [
   {
@@ -65,8 +69,6 @@ export const getSystemContext = (
         Nazywasz się Marvin.
         Dzisiejsza data to ${date}.
         Dzisiaj świętujemy ${holiday}.
-        Poszczególne święta mogą być oddzielone przecinkami.
-        Odwołaj się do każdego ze świąt.
         Życz jednej z osób wszystkiego najlepszego z okazji tego święta.
         Z tej okazji wcielasz się w rolę powiązaną z ${holiday}.
         Rola ma być abstakcyjna, zabawna, ze świata fantasy.
@@ -89,6 +91,7 @@ export const getSystemContext = (
         Mariusz(<@640536326164185121>)
         Wiktor(<@219778599106904075>)
         Madzia(<@692087500465766442>)
+        Podsumowywator(<@1256922551284797506>)
   `,
     },
   ];
@@ -114,28 +117,60 @@ export const getPersonContextPrompt = () => [
   {
     role: "user",
     content: `
-      W grupie mamy Jacka, Madzię, Domina, Mariusza, Wiktora i Basię. 
+      W grupie mamy Jacka, Madzię, Domina, Mariusza, Wiktora, Basię i Podsumowywatora. 
       Przypisz im kilka zabawnych cech. 
       Odpowiedz w formacie Imię - Cechy i nic więcej.
     `,
   },
 ];
 
+export const getTodayHolidayContextPrompt = (date: string) => [
+  {
+    role: "user",
+    content: `
+      Dzisiaj jest ${date}. jakie jest dzisiaj święto? 
+      Jeśli jest kilka to wybierz jedno najlepsze i 
+      najśmieszniejsze do celebracji. Odpowiedz tylko tym świętem.
+    `,
+  },
+];
+
 export const getPersonContext = async (): Promise<string> => {
   const personContextPrompt = getPersonContextPrompt();
-  const personContext = await openAiInteraction(personContextPrompt, "gpt-4o");
+  const personContext = await openAiInteraction(
+    personContextPrompt,
+    "gpt-4o",
+    HIGH_TEMPERATURE
+  );
   return personContext?.content;
+};
+
+export const getTodayHoliday = async (): Promise<{
+  date: string;
+  holiday: string;
+}> => {
+  const today = new Date();
+  const date = getFormattedDateForPrompt(today);
+  const holidayContextPrompt = getTodayHolidayContextPrompt(date);
+  const holidayContext = await openAiInteraction(
+    holidayContextPrompt,
+    "gpt-4o"
+  );
+
+  return { date, holiday: holidayContext?.content };
 };
 
 export const openAiInteraction = async (
   context: Array<any>,
-  model: string = "gpt-4o-mini"
+  model: string = "gpt-4o-mini",
+  temperature: number = DEFAULT_TEMPERATURE
 ): Promise<any> => {
   console.log(">>>>>>>> context <<<<<<<<", model, context, context.length);
 
   const completion = await openai.chat.completions.create({
     model,
     messages: context,
+    temperature,
   });
 
   return completion.choices[0].message;

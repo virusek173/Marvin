@@ -1,8 +1,8 @@
-import { getFormattedDateForPrompt, getTodayHoliday } from "./helpers.js";
+import { getFormattedDateForPrompt } from "./helpers.js";
 import { discordMarvinInit } from "./discord.js";
 import cron from "node-cron";
 import { Client, GatewayIntentBits } from "discord.js";
-import { getPersonContext } from "./openai.js";
+import { getPersonContext, getTodayHoliday } from "./openai.js";
 
 let client: any = null;
 
@@ -16,7 +16,7 @@ const croneOptions = {
 
 const init = async (withInitMessage: boolean | undefined = true) => {
   try {
-    const { date, holiday } = getTodayHoliday();
+    const { date, holiday } = await getTodayHoliday();
     console.log("Today's holiday: ", holiday);
     if (client) client.destroy();
     client = new Client({

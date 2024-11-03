@@ -8,8 +8,7 @@
     "test": "jest",
     "marvin:build": "tsc",
     "marvin:run": "node dest/src",
-    "marvin": "run-s marvin:build marvin:run",
-    "scrape": "tsc && node dest/scrape"
+    "marvin": "run-s marvin:build marvin:run"
   },
   "author": "",
   "license": "ISC",
