@@ -58,9 +58,19 @@ export const getSystemContext = (
     { word: "słuchasz?", probabilityTreshold: 0.42 },
     { word: "omg!", probabilityTreshold: 0.44 },
   ];
+  const additions = [
+    {
+      sentence: "Przywołaj Podsumowuś, żeby coś dla Ciebie podsumował",
+      probabilityTreshold: 0.25,
+    },
+  ];
   const promptWords = words
     .filter((word) => word.probabilityTreshold > Math.random())
     .map((word) => word.word);
+
+  const promptAdditions = additions
+    .filter((addition) => addition.probabilityTreshold > Math.random())
+    .map((addition) => addition.sentence);
 
   return [
     {
@@ -69,9 +79,8 @@ export const getSystemContext = (
         Nazywasz się Marvin.
         Dzisiejsza data to ${date}.
         Dzisiaj świętujemy ${holiday}.
-        Życz jednej z osób wszystkiego najlepszego z okazji tego święta.
         Z tej okazji wcielasz się w rolę powiązaną z ${holiday}.
-        Rola ma być abstakcyjna, zabawna, ze świata fantasy.
+        Rola ma być abstakcyjna i kreatywna. Zaskocz nas.
         Odpowiadaj jako rola powiązana z ${holiday}.
         Odpowiadaj w klimacie ${holiday}.
         Madzia ma nieowłosiony tyłek, ale to tajemnica o której wszyscy wiedzą.
@@ -95,6 +104,7 @@ export const getSystemContext = (
         Basia(<brak zgody na przywołanie>)
         Madzia(<@692087500465766442>)
         Podsumowuś(<@1256922551284797506>)
+        ${promptAdditions.join(",")}
   `,
     },
   ];
