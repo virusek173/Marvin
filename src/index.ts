@@ -22,9 +22,9 @@ const init = async (withInitMessage: boolean | undefined = true) => {
     client = new Client({
       intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
     });
-    const personContext = await getPersonContext();
-    console.log("personContext: ", personContext);
-    discordMarvinInit(client, date, holiday, personContext, withInitMessage);
+    // const personContext = await getPersonContext();
+    // console.log("personContext: ", personContext);
+    discordMarvinInit(client, date, holiday, '', withInitMessage);
   } catch (error: any) {
     console.log("Unexpected Error: ", error?.message);
   }

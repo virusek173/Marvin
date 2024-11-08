@@ -2,9 +2,9 @@ import "./propotypes.js";
 
 import { Client, GatewayIntentBits } from "discord.js";
 import {
-  getFirstUserMessage,
+  getFirstExperimentalUserMessage,
   getInitWelcomeContext,
-  getSystemContext,
+  getExperimentalSystemContext,
   openAiInteraction,
 } from "./openai.js";
 
@@ -56,17 +56,16 @@ export const discordMarvinInit = (
   const holiday = _holiday ? _holiday : "Brak święta";
   client.on("ready", async () => {
     console.log(`Logged in as ${client.user.tag}!`);
-    const systemContext = getSystemContext(
+    const systemContext = getExperimentalSystemContext(
       date,
       holiday,
       MARVIN_ID,
-      personContext
     );
-    const firstUserMessage = getFirstUserMessage();
+    const firstUserMessage = getFirstExperimentalUserMessage();
 
     const channel = client.channels.cache.get(CHANNEL_ID);
     if (!withInitMessage) {
-      channel.send(`Dzień dobry! Nie było mnie, ale wstałem z... Dockera!`);
+      channel.send(`Nie było mnie, ale wstałem z... Dockera.`);
 
       return;
     }
@@ -100,11 +99,10 @@ export const discordMarvinInit = (
         );
 
         context.pushWithLimit(userResponse);
-        const systemContext = getSystemContext(
+        const systemContext = getExperimentalSystemContext(
           date,
           holiday,
           MARVIN_ID,
-          personContext
         );
         try {
           const assResponse = await openAiInteraction([
