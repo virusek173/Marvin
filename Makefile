@@ -2,4 +2,6 @@ up:
 	docker-compose up -d
 down:
 	docker-compose down
-restart: down up
+build:
+	docker-compose build
+restart: down build up
