@@ -9,6 +9,7 @@ import {
 } from "./openai.js";
 
 import dotenv from "dotenv";
+import fs from "fs";
 
 const proxyHandler = {
   get(target: any, prop: any) {
@@ -41,6 +42,29 @@ dotenv.config();
 const { MARVIN_ID, CLIENT_TOKEN, CHANNEL_ID } = process.env;
 let context: Array<any> = [];
 
+const loadContextFromFile = (fileName: string): Array<any> => {
+  try {
+    if (fs.existsSync(fileName)) {
+      const contextData = fs.readFileSync(fileName, 'utf8');
+      context = JSON.parse(contextData);
+      return context;
+    }
+    return [];
+  } catch (error) {
+    console.error('Error reading context file:', error);
+    return [];
+  }
+};
+
+const saveContextToFile = (fileName: string, context: Array<any>): void => {
+  try {
+    const contextJson = JSON.stringify(context, null, 2);
+    fs.writeFileSync(fileName, contextJson);
+  } catch (error) {
+    console.error('Error writing context file:', error);
+  }
+};
+
 const messageResponseFactory = (response: any) => ({
   role: "user",
   content: response,
@@ -56,6 +80,9 @@ export const discordMarvinInit = (
   const holiday = _holiday ? _holiday : "Brak święta";
   client.on("ready", async () => {
     console.log(`Logged in as ${client.user.tag}!`);
+    
+    const savedContext = loadContextFromFile('context.json');
+
     const systemContext = getExperimentalSystemContext(
       date,
       holiday,
@@ -72,6 +99,7 @@ export const discordMarvinInit = (
     try {
       const message = await openAiInteraction([
         ...systemContext,
+        ...savedContext,
         ...firstUserMessage,
       ]);
 
@@ -115,6 +143,8 @@ export const discordMarvinInit = (
               ? assResponse.content
               : `${assResponse.content.substring(0, 1950)}...`
           );
+
+          saveContextToFile('context.json', context);
         } catch (error: any) {
           console.log("err: ", error?.message);
 
