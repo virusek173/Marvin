@@ -120,6 +120,8 @@ export const discordMarvinInit = (
       msg.mentions?.repliedUser?.username === "Marvin"
     ) {
       if (msg.author.username !== "Marvin") {
+        msg.channel.sendTyping();
+        
         const realName = mapGlobalNameNameToRealName[msg.author.globalName];
         const modifiedUserResponseContent = `${realName}: ${msg.content}`;
         const userResponse = messageResponseFactory(
