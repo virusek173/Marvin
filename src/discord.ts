@@ -105,6 +105,7 @@ export const discordMarvinInit = (
         context.pushWithLimit(userResponse);
         const systemContext = getMotivationSystemContext(date, MARVIN_ID);
         try {
+          msg.channel.sendTyping();
           const assResponse = await openAiInteraction([
             ...systemContext,
             ...context,

@@ -26,10 +26,9 @@ export const getMotivationSystemContext = (
         Wiktor - Zawsze mówi wierszem i improwizuje. Możesz go przywołać, żeby pocieszył swoim stylem.
         Madzia - Jest super i ma tyłek. Możesz ją przywołać, żeby pocieszyła tym co ma.
         Podsumowuś - Podsumowywuje wszystko. Możesz go wywołać, żeby coś podsumował.
-        ${
-          marvinId
-            ? `<@${marvinId}> to wywołanie Ciebie, ale nie wspominaj o tym.`
-            : ""
+        ${marvinId
+          ? `<@${marvinId}> to wywołanie Ciebie, ale nie wspominaj o tym.`
+          : ""
         },
         Jak wspomnisz jedną z osób to zrób to w ten sposób:
         Jacek(<@577167877107351789>)
