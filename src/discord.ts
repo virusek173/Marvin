@@ -2,14 +2,18 @@ import "./propotypes.js";
 
 import { Client, GatewayIntentBits } from "discord.js";
 import {
-  getFirstExperimentalUserMessage,
-  getInitWelcomeContext,
-  getExperimentalSystemContext,
   openAiInteraction,
+  getFirstMotivionUserMessage,
+  getMotivationSystemContext,
 } from "./openai.js";
 
 import dotenv from "dotenv";
 import fs from "fs";
+import {
+  loadContextFromFile,
+  messageResponseFactory,
+  saveContextToFile,
+} from "./helpers.js";
 
 const proxyHandler = {
   get(target: any, prop: any) {
@@ -42,53 +46,23 @@ dotenv.config();
 const { MARVIN_ID, CLIENT_TOKEN, CHANNEL_ID } = process.env;
 let context: Array<any> = [];
 
-const loadContextFromFile = (fileName: string): Array<any> => {
-  try {
-    if (fs.existsSync(fileName)) {
-      const contextData = fs.readFileSync(fileName, 'utf8');
-      context = JSON.parse(contextData);
-      return context;
-    }
-    return [];
-  } catch (error) {
-    console.error('Error reading context file:', error);
-    return [];
-  }
-};
-
-const saveContextToFile = (fileName: string, context: Array<any>): void => {
-  try {
-    const contextJson = JSON.stringify(context, null, 2);
-    fs.writeFileSync(fileName, contextJson);
-  } catch (error) {
-    console.error('Error writing context file:', error);
-  }
-};
-
-const messageResponseFactory = (response: any) => ({
-  role: "user",
-  content: response,
-});
-
 export const discordMarvinInit = (
   client: any,
   date: string,
-  _holiday: string | undefined,
+  _quote: string | undefined,
   personContext: string,
   withInitMessage: boolean = true
 ) => {
-  const holiday = _holiday ? _holiday : "Brak święta";
+  const quote = _quote
+    ? _quote
+    : "Arnold Schwarzenegger i Mariusz Pudzianowski";
   client.on("ready", async () => {
     console.log(`Logged in as ${client.user.tag}!`);
-    
-    const savedContext = loadContextFromFile('context.json');
 
-    const systemContext = getExperimentalSystemContext(
-      date,
-      holiday,
-      MARVIN_ID,
-    );
-    const firstUserMessage = getFirstExperimentalUserMessage();
+    const savedContext = loadContextFromFile("context.json");
+
+    const systemContext = getMotivationSystemContext(date, MARVIN_ID);
+    const firstUserMessage = getFirstMotivionUserMessage(quote);
 
     const channel = client.channels.cache.get(CHANNEL_ID);
     if (!withInitMessage) {
@@ -121,7 +95,7 @@ export const discordMarvinInit = (
     ) {
       if (msg.author.username !== "Marvin") {
         msg.channel.sendTyping();
-        
+
         const realName = mapGlobalNameNameToRealName[msg.author.globalName];
         const modifiedUserResponseContent = `${realName}: ${msg.content}`;
         const userResponse = messageResponseFactory(
@@ -129,11 +103,7 @@ export const discordMarvinInit = (
         );
 
         context.pushWithLimit(userResponse);
-        const systemContext = getExperimentalSystemContext(
-          date,
-          holiday,
-          MARVIN_ID,
-        );
+        const systemContext = getMotivationSystemContext(date, MARVIN_ID);
         try {
           const assResponse = await openAiInteraction([
             ...systemContext,
@@ -146,7 +116,7 @@ export const discordMarvinInit = (
               : `${assResponse.content.substring(0, 1950)}...`
           );
 
-          saveContextToFile('context.json', context);
+          saveContextToFile("context.json", context);
         } catch (error: any) {
           console.log("err: ", error?.message);
 

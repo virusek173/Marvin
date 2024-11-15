@@ -1,8 +1,8 @@
-import { getFormattedDateForPrompt } from "./helpers.js";
+import { getFormattedDateForPrompt, getTodayDate } from "./helpers.js";
 import { discordMarvinInit } from "./discord.js";
 import cron from "node-cron";
 import { Client, GatewayIntentBits } from "discord.js";
-import { getPersonContext, getTodayHoliday } from "./openai.js";
+import { getQuote } from "./openai.js";
 
 let client: any = null;
 
@@ -16,15 +16,15 @@ const croneOptions = {
 
 const init = async (withInitMessage: boolean | undefined = true) => {
   try {
-    const { date, holiday } = await getTodayHoliday();
-    console.log("Today's holiday: ", holiday);
+    const date = await getTodayDate();
+    console.log("Today's date: ", date);
     if (client) client.destroy();
     client = new Client({
       intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
     });
-    // const personContext = await getPersonContext();
-    // console.log("personContext: ", personContext);
-    discordMarvinInit(client, date, holiday, '', withInitMessage);
+    const quote = await getQuote();
+    console.log("Today's quote: ", quote);
+    discordMarvinInit(client, date, quote, "", withInitMessage);
   } catch (error: any) {
     console.log("Unexpected Error: ", error?.message);
   }
