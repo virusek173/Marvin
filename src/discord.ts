@@ -46,6 +46,8 @@ dotenv.config();
 const { MARVIN_ID, CLIENT_TOKEN, CHANNEL_ID } = process.env;
 let context: Array<any> = [];
 
+const DEFAULT_QUOTE = "Co żyje to żyje";
+
 export const discordMarvinInit = (
   client: any,
   date: string,
@@ -53,9 +55,7 @@ export const discordMarvinInit = (
   personContext: string,
   withInitMessage: boolean = true
 ) => {
-  const quote = _quote
-    ? _quote
-    : "Arnold Schwarzenegger i Mariusz Pudzianowski";
+  const quote = _quote ? _quote : DEFAULT_QUOTE;
   client.on("ready", async () => {
     console.log(`Logged in as ${client.user.tag}!`);
 
