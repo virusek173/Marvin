@@ -1,9 +1,9 @@
 import OpenAI from "openai";
 import { getFormattedDateForPrompt } from "./helpers.js";
+import { Message, OpenAi } from "./services/openai.js";
 
 const openai = new OpenAI();
 
-const DEFAULT_TEMPERATURE = 1;
 
 export const getMotivationSystemContext = (
   date: string,
@@ -56,7 +56,7 @@ export const getFirstMotivionUserMessage = (quote: string) => [
   },
 ];
 
-export const getTodayQuoteContextPrompt = () => [
+export const getTodayQuoteContextPrompt = (): Message[] => [
   {
     role: "user",
     content: `Podaj mi istniejący motywujący i inspirujący cytat. 
@@ -65,27 +65,11 @@ export const getTodayQuoteContextPrompt = () => [
 ];
 
 export const getQuote = async (): Promise<string> => {
+  const openai = new OpenAi();
   const quoteContextPrompt = getTodayQuoteContextPrompt();
-  const quoteResponse = await openAiInteraction(
+  const quoteResponse = await openai.interact(
     quoteContextPrompt,
     "gpt-4o",
-    DEFAULT_TEMPERATURE
   );
   return quoteResponse?.content;
-};
-
-export const openAiInteraction = async (
-  context: Array<any>,
-  model: string = "gpt-4o-mini",
-  temperature: number = DEFAULT_TEMPERATURE
-): Promise<any> => {
-  console.log(">>>>>>>> context <<<<<<<<", model, context, context.length);
-
-  const completion = await openai.chat.completions.create({
-    model,
-    messages: context,
-    temperature,
-  });
-
-  return completion.choices[0].message;
 };

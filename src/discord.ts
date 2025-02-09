@@ -2,7 +2,6 @@ import "./propotypes.js";
 
 import { Client, GatewayIntentBits } from "discord.js";
 import {
-  openAiInteraction,
   getFirstMotivionUserMessage,
   getMotivationSystemContext,
 } from "./openai.js";
@@ -14,6 +13,8 @@ import {
   messageResponseFactory,
   saveContextToFile,
 } from "./helpers.js";
+import { DeepSeek } from "./services/deepseek.js";
+import { OpenAi } from "./services/openai.js";
 
 const proxyHandler = {
   get(target: any, prop: any) {
@@ -47,6 +48,8 @@ const { MARVIN_ID, CLIENT_TOKEN, CHANNEL_ID } = process.env;
 let context: Array<any> = [];
 
 const DEFAULT_QUOTE = "Co żyje to żyje";
+const deepseek = new DeepSeek();
+const openai = new OpenAi();
 
 export const discordMarvinInit = (
   client: any,
@@ -71,7 +74,7 @@ export const discordMarvinInit = (
       return;
     }
     try {
-      const message = await openAiInteraction([
+      const message = await openai.interact([
         ...systemContext,
         ...savedContext,
         ...firstUserMessage,
@@ -98,6 +101,9 @@ export const discordMarvinInit = (
 
         const realName = mapGlobalNameNameToRealName[msg.author.globalName];
         const modifiedUserResponseContent = `${realName}: ${msg.content}`;
+        const gptModel = true; //msg.content.toLowerCase().includes("gpt");
+        const modelFunction = gptModel ? openai.interact : deepseek.interact;
+        const messageAddition = `Z wyrazami szacunku,\nTwój model ${gptModel ? "GPT" : "DeepSeek"}.`;
         const userResponse = messageResponseFactory(
           modifiedUserResponseContent
         );
@@ -106,15 +112,18 @@ export const discordMarvinInit = (
         const systemContext = getMotivationSystemContext(date, MARVIN_ID);
         try {
           msg.channel.sendTyping();
-          const assResponse = await openAiInteraction([
+          const assResponse = await modelFunction([
             ...systemContext,
             ...context,
           ]);
-          context.pushWithLimit(assResponse);
+          if (assResponse) {
+            context.pushWithLimit(assResponse);
+          }
+          const responseContent = `${assResponse.content}\n\n${messageAddition}`;
           msg.reply(
-            assResponse.content.length < 2000
-              ? assResponse.content
-              : `${assResponse.content.substring(0, 1950)}...`
+            responseContent.length < 2000
+              ? responseContent
+              : `${responseContent.substring(0, 1950)}...\n\n${messageAddition}`
           );
 
           saveContextToFile("context.json", context);

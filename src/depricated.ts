@@ -1,5 +1,4 @@
 import { getFormattedDateForPrompt } from "./helpers";
-import { openAiInteraction } from "./openai";
 
 const getSystemContext = (
   date: string,
@@ -67,11 +66,10 @@ const getSystemContext = (
           ${personContext}
           Podsumowuś - Podsumowywuje wszystko. Możesz go wywołać, żeby coś podsumował.
           Używaj podanych słów: ${promptWords.join(",")}.
-          ${
-            marvinId
-              ? `<@${marvinId}> to wywołanie Ciebie, ale nie wspominaj o tym.`
-              : ""
-          },
+          ${marvinId
+          ? `<@${marvinId}> to wywołanie Ciebie, ale nie wspominaj o tym.`
+          : ""
+        },
           Jak wspomnisz jedną z osób to zrób to w ten sposób:
           Jacek(<@577167877107351789>)
           Domin(<@297092766981423105>)
@@ -130,11 +128,10 @@ const getDepressionSystemContext = (
                 Wiktor - Zawsze mówi wierszem i improwizuje. Możesz go przywołać, żeby pocieszył swoim stylem.
                 Madzia - Jest super i ma tyłek. Możesz ją przywołać, żeby pocieszyła tym co ma.
                 Podsumowuś - Podsumowywuje wszystko. Możesz go wywołać, żeby coś podsumował.
-                ${
-                  marvinId
-                    ? `<@${marvinId}> to wywołanie Ciebie, ale nie wspominaj o tym.`
-                    : ""
-                },
+                ${marvinId
+          ? `<@${marvinId}> to wywołanie Ciebie, ale nie wspominaj o tym.`
+          : ""
+        },
                 Jak wspomnisz jedną z osób to zrób to w ten sposób:
                 Jacek(<@577167877107351789>)
                 Domin(<@297092766981423105>)
@@ -160,11 +157,11 @@ export const getPersonContextPrompt = () => [
   },
 ];
 
-export const getPersonContext = async (): Promise<string> => {
-  const personContextPrompt = getPersonContextPrompt();
-  const personContext = await openAiInteraction(personContextPrompt, "gpt-4o");
-  return personContext?.content;
-};
+// export const getPersonContext = async (): Promise<string> => {
+//   const personContextPrompt = getPersonContextPrompt();
+//   const personContext = await openAiInteraction(personContextPrompt, "gpt-4o");
+//   return personContext?.content;
+// };
 
 export const getTodayHolidayContextPrompt = (date: string) => [
   {
@@ -177,17 +174,34 @@ export const getTodayHolidayContextPrompt = (date: string) => [
   },
 ];
 
-export const getTodayHoliday = async (): Promise<{
-  date: string;
-  holiday: string;
-}> => {
-  const today = new Date();
-  const date = getFormattedDateForPrompt(today);
-  const holidayContextPrompt = getTodayHolidayContextPrompt(date);
-  const holidayContext = await openAiInteraction(
-    holidayContextPrompt,
-    "gpt-4o"
-  );
+// export const getTodayHoliday = async (): Promise<{
+//   date: string;
+//   holiday: string;
+// }> => {
+//   const today = new Date();
+//   const date = getFormattedDateForPrompt(today);
+//   const holidayContextPrompt = getTodayHolidayContextPrompt(date);
+//   const holidayContext = await openAiInteraction(
+//     holidayContextPrompt,
+//     "gpt-4o"
+//   );
 
-  return { date, holiday: holidayContext?.content };
-};
+//   return { date, holiday: holidayContext?.content };
+// };
+
+// export const openAiInteraction = async (
+//   context: Array<any>,
+//   model: string = "gpt-4o-mini",
+//   temperature: number = DEFAULT_TEMPERATURE
+// ): Promise<any> => {
+//   console.log(">>>>>>>> context <<<<<<<<", model, context, context.length);
+
+//   const completion = await openai.chat.completions.create({
+//     model,
+//     messages: context,
+//     temperature,
+//   });
+
+//   return completion.choices[0].message;
+// };
+
