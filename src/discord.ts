@@ -74,7 +74,7 @@ export const discordMarvinInit = (
       return;
     }
     try {
-      const message = await openai.interact([
+      const message = await openai.contextInteract([
         ...systemContext,
         ...savedContext,
         ...firstUserMessage,
@@ -102,7 +102,7 @@ export const discordMarvinInit = (
         const realName = mapGlobalNameNameToRealName[msg.author.globalName];
         const modifiedUserResponseContent = `${realName}: ${msg.content}`;
         const gptModel = true; //msg.content.toLowerCase().includes("gpt");
-        const modelFunction = gptModel ? openai.interact : deepseek.interact;
+        const modelFunction = gptModel ? openai.contextInteract : deepseek.interact;
         const messageAddition = `Z wyrazami szacunku,\nTwój model ${gptModel ? "GPT" : "DeepSeek"}.`;
         const userResponse = messageResponseFactory(
           modifiedUserResponseContent

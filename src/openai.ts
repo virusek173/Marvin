@@ -1,9 +1,6 @@
 import OpenAI from "openai";
-import { getFormattedDateForPrompt } from "./helpers.js";
-import { Message, OpenAi } from "./services/openai.js";
 
 const openai = new OpenAI();
-
 
 export const getMotivationSystemContext = (
   date: string,
@@ -55,21 +52,3 @@ export const getFirstMotivionUserMessage = (quote: string) => [
     `,
   },
 ];
-
-export const getTodayQuoteContextPrompt = (): Message[] => [
-  {
-    role: "user",
-    content: `Podaj mi istniejący motywujący i inspirujący cytat. 
-    Odpowiedz tylko nim i autorem. Niczym więcej.`,
-  },
-];
-
-export const getQuote = async (): Promise<string> => {
-  const openai = new OpenAi();
-  const quoteContextPrompt = getTodayQuoteContextPrompt();
-  const quoteResponse = await openai.interact(
-    quoteContextPrompt,
-    "gpt-4o",
-  );
-  return quoteResponse?.content;
-};

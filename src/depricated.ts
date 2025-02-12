@@ -1,5 +1,3 @@
-import { getFormattedDateForPrompt } from "./helpers";
-
 const getSystemContext = (
   date: string,
   holiday: string,

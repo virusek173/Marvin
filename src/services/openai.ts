@@ -18,12 +18,38 @@ export class OpenAi {
     constructor() {
         this.openai = new OpenAI();
         this.interact = this.interact.bind(this);
+        this.contextInteract = this.contextInteract.bind(this);
     }
 
-    async interact(context: Array<Message>, model: string = "gpt-4o-mini", chainOfToughts: boolean = false): Promise<any> {
+    async interact(prompt: string, model: string = "gpt-4o-mini", chainOfToughts: boolean = false): Promise<any> {
+        try {
+            const context: Message[] = [
+                {
+                    role: 'system',
+                    content: 'You are ahelpful assistant.'
+                },
+                {
+                    role: 'user',
+                    content: prompt
+                }
+            ]
+            const completion = await this.openai.chat.completions.create({
+                model,
+                messages: context,
+                max_tokens: 2500,
+                ...(chainOfToughts ? { response_format: zodResponseFormat(Response, "response") } : null),
+            });
+
+            return completion.choices[0].message;
+        } catch (error: any) {
+            console.error("OpenAI Error:", (error as Error).message);
+            return null;
+        }
+    }
+
+    async contextInteract(context: Array<Message>, model: string = "gpt-4o-mini", chainOfToughts: boolean = false): Promise<any> {
         try {
             console.log(">>>>>>>> context <<<<<<<<", model, context, context.length);
-            console.log({ opeanai: this });
             const completion = await this.openai.chat.completions.create({
                 model,
                 messages: context,

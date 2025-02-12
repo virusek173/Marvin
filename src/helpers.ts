@@ -1,21 +1,6 @@
 import { HolidayObject } from "./model.js";
 import * as fs from "fs";
 
-export const getFormattedDate = (today: Date): string => {
-  var mm = today.getMonth() + 1;
-  var dd = today.getDate();
-
-  return [(mm > 9 ? "" : "0") + mm, (dd > 9 ? "" : "0") + dd].join("");
-};
-
-export const getFormattedDateForPrompt = (today: Date): string => {
-  var rr = today.getFullYear();
-  var mm = today.getMonth() + 1;
-  var dd = today.getDate();
-
-  return [rr, (mm > 9 ? "" : "0") + mm, (dd > 9 ? "" : "0") + dd].join(".");
-};
-
 export const loadContextFromFile = (fileName: string): Array<any> => {
   try {
     if (fs.existsSync(fileName)) {
@@ -47,8 +32,3 @@ export const messageResponseFactory = (response: any) => ({
   content: response,
 });
 
-export const getTodayDate = async () => {
-  const today = new Date();
-
-  return getFormattedDateForPrompt(today);
-};
