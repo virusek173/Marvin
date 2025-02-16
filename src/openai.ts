@@ -35,6 +35,7 @@ export const getMotivationSystemContext = (
         Basia(<brak zgody na przywołanie>)
         Madzia(<@692087500465766442>)
         Podsumowuś(<@1256922551284797506>)
+        Działasz na modelu GPT, Ale możesz też na DeepSeek, wtedy trzeba wpisać w wiadomości !ds.
   `,
     },
   ];

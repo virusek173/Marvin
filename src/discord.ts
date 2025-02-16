@@ -101,9 +101,9 @@ export const discordMarvinInit = (
 
         const realName = mapGlobalNameNameToRealName[msg.author.globalName];
         const modifiedUserResponseContent = `${realName}: ${msg.content}`;
-        const gptModel = true; //msg.content.toLowerCase().includes("gpt");
-        const modelFunction = gptModel ? openai.contextInteract : deepseek.interact;
-        const messageAddition = `Z wyrazami szacunku,\nTwój model ${gptModel ? "GPT" : "DeepSeek"}.`;
+        const deepseekModel = msg.content.toLowerCase().includes("!ds")
+        const modelFunction = deepseekModel ? deepseek.interact : openai.contextInteract;
+        const messageAddition = deepseekModel ? `Z wyrazami szacunku,\nTwój model DeepSeek.` : '';
         const userResponse = messageResponseFactory(
           modifiedUserResponseContent
         );

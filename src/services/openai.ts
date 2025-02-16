@@ -60,7 +60,8 @@ export class OpenAi {
             return completion.choices[0].message;
         } catch (error: any) {
             console.error("OpenAI Error:", (error as Error).message);
-            return null;
+
+            throw error;
         }
     }
 

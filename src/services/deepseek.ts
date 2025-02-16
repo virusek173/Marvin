@@ -39,7 +39,8 @@ export class DeepSeek {
       return completion.choices[0].message;
     } catch (error: any) {
       console.error("DeepSeek Error:", (error as Error).message);
-      return null;
+
+      throw error;
     }
   }
 
