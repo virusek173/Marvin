@@ -10,7 +10,7 @@ const croneMap = {
 const croneOptions = {
   timezone: "Europe/Warsaw",
 };
-const WITH_INIT_MESSAGE = true;
+const WITH_INIT_MESSAGE = false;
 
 const init = async (withInitMessage: boolean | undefined = true) => {
   try {
