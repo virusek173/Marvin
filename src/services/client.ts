@@ -9,7 +9,7 @@ export class ClientService {
         });
     }
 
-    getClient() {
+    getClient(): any {
         return this.client;
     }
 }
