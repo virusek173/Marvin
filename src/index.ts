@@ -5,17 +5,20 @@ import { DiscordServce } from "./services/discord.js";
 
 const openai = new OpenAi();
 const croneMap = {
-  SIX_AM: "0 6 * * *",
+  EVERY_DAY_SIX_AM: "0 6 * * *",
+  EVERY_MINUTE: "* * * * *",
 };
 const croneOptions = {
   timezone: "Europe/Warsaw",
 };
 const WITH_INIT_MESSAGE = false;
+let client: any = null;
 
 const init = async (withInitMessage: boolean | undefined = true) => {
   try {
+    client?.destroy();
     const quote = await openai.interact(QUOTE_PROMPT, "gpt-4o")
-    new DiscordServce(quote, withInitMessage);
+    client = new DiscordServce(quote, withInitMessage);
   } catch (error: any) {
     console.log("Unexpected Error: ", error?.message);
   }
@@ -23,7 +26,7 @@ const init = async (withInitMessage: boolean | undefined = true) => {
 
 init(WITH_INIT_MESSAGE);
 
-const croneTime = croneMap.SIX_AM;
+const croneTime = croneMap.EVERY_DAY_SIX_AM;
 
 console.log(`Uruchamiam crone z czasem: ${croneTime}`);
 cron.schedule(croneTime, () => init(), croneOptions);

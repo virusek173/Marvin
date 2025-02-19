@@ -26,13 +26,14 @@ const openai = new OpenAi();
 
 
 export class DiscordServce {
+    private client: any;
     private date: string;
     constructor(_quote: string | undefined,
         withInitMessage: boolean = true) {
         const contextService = new ContextService([])
 
         const clientService = new ClientService();
-        const client = clientService.getClient();
+        this.client = clientService.getClient();
 
         const date = new DateService();
         this.date = date.getFormattedDate();
@@ -40,15 +41,15 @@ export class DiscordServce {
         const quote = _quote ? _quote : DEFAULT_QUOTE;
         console.log("Today's quote: ", quote);
 
-        client.on("ready", async () => {
-            console.log(`Logged in as ${client.user.tag}!`);
+        this.client.on("ready", async () => {
+            console.log(`Logged in as ${this.client.user.tag}!`);
 
             const savedContext = loadContextFromFile("context.json");
 
             const systemContext = getMotivationSystemContext(this.date, MARVIN_ID);
             const firstUserMessage = getFirstMotivionUserMessage(quote);
 
-            const channel = client.channels.cache.get(CHANNEL_ID);
+            const channel = this.client.channels.cache.get(CHANNEL_ID);
             if (!withInitMessage) {
                 channel.send(`Nie było mnie, ale wstałem z... Dockera.`);
 
@@ -70,7 +71,7 @@ export class DiscordServce {
             };
         });
 
-        client.on("messageCreate", async (msg: any) => {
+        this.client.on("messageCreate", async (msg: any) => {
             if (
                 msg.content.includes(MARVIN_ID) ||
                 msg.mentions?.repliedUser?.username === "Marvin"
@@ -113,6 +114,10 @@ export class DiscordServce {
             }
         });
 
-        client.login(CLIENT_TOKEN);
+        this.client.login(CLIENT_TOKEN);
+    }
+
+    destroy() {
+        this.client.destroy();
     }
 }
