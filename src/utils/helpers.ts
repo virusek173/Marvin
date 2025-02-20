@@ -26,11 +26,6 @@ export const saveContextToFile = (
   }
 };
 
-export const messageResponseFactory = (response: any) => ({
-  role: "user",
-  content: response,
-});
-
 export const proxyHandler = {
   get(target: any, prop: any) {
     return target[prop] || prop || "";

@@ -1,6 +1,6 @@
 import cron from "node-cron";
 import { OpenAi } from "./services/openai.js";
-import { QUOTE_PROMPT } from "./prompts.js";
+import { QUOTE_PROMPT } from "./utils/prompts.js";
 import { DiscordServce } from "./services/discord.js";
 
 const openai = new OpenAi();

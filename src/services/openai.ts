@@ -21,16 +21,16 @@ export class OpenAi {
         this.contextInteract = this.contextInteract.bind(this);
     }
 
-    async interact(prompt: string, model: string = "gpt-4o-mini", chainOfToughts: boolean = false): Promise<any> {
+    async interact(userPrompt: string, model: string = "gpt-4o-mini", chainOfToughts: boolean = false): Promise<any> {
         try {
             const context: Message[] = [
                 {
                     role: 'system',
-                    content: 'You are ahelpful assistant.'
+                    content: 'You are a helpful assistant.'
                 },
                 {
                     role: 'user',
-                    content: prompt
+                    content: userPrompt
                 }
             ]
             const completion = await this.openai.chat.completions.create({
@@ -65,4 +65,10 @@ export class OpenAi {
         }
     }
 
+    messageFactory(content: string, role: 'user' | 'system' = 'user'): Message {
+        return {
+            role,
+            content,
+        }
+    }
 }

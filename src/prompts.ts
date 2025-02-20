@@ -1,1 +1,0 @@
-export const QUOTE_PROMPT = `Podaj mi istniejący motywujący i inspirujący cytat. Odpowiedz tylko nim i autorem. Niczym więcej.`
