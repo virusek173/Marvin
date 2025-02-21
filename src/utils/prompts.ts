@@ -6,6 +6,7 @@ export const DECIDER_SYSTEM_PROMPT = `Jesteś botem, który decyduje, który z d
     * Zapytanie wymaga dostępu do najnowszych informacji z internetu.
     * Zapytanie dotyczy prognoz, przewidywań, aktualności, wyników sportowych, itp.
     * Zapytanie dotyczy najnowszych/bieżących informacji.
+    * Zapytanie zawiera link do strony internetowej.
     Wybierz MARVIN, jeśli zapytanie można rozwiązać bez przeszukiwania internetu.`
 
 export const getPerplexityToMarvinResponsePrompt = (perplexityResponse: string) => `Wiadomość jaką dostanies jest z internetu. 
