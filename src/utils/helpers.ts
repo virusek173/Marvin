@@ -57,7 +57,7 @@ export const exceptionHandler = (error: any, message: any) => {
   console.log("err: ", error?.message);
 
   message.reply(
-    `Wyjebałem się... POWÓD: ${error?.message?.substring(0, 1800)}
+    `Wywaliłem się... POWÓD: ${error?.message?.substring(0, 1800)}
     Zapytaj mnie proszę ponownie.`
   );
 }

@@ -19,7 +19,31 @@ import {
 } from "../utils/prompts.js";
 
 dotenv.config();
-const { MARVIN_ID, DISCORD_CLIENT_TOKEN, CHANNEL_ID } = process.env;
+const {
+    DISCORD_CLIENT_TOKEN,
+    CHANNEL_ID,
+    MARVIN_ID,
+    HOMAR_ID,
+    JACEK_ID,
+    DOMIN_ID,
+    MARIUSZ_ID,
+    WIKTOR_ID,
+    MADZIA_ID,
+    MASON_ID,
+    PODSUMOWUS_ID
+} = process.env;
+
+const peopleMap = {
+    "MarvinId": MARVIN_ID || '',
+    "HomarId": HOMAR_ID || '',
+    "JacekId": JACEK_ID || '',
+    "DominId": DOMIN_ID || '',
+    "MariuszId": MARIUSZ_ID || '',
+    "WiktorId": WIKTOR_ID || '',
+    "MadziaId": MADZIA_ID || '',
+    "MasonId": MASON_ID || '',
+    "PodsumowusId": PODSUMOWUS_ID || '',
+}
 
 const DEFAULT_QUOTE = "Co żyje to żyje";
 const deepseek = new DeepSeek();
@@ -40,7 +64,7 @@ export class DiscordServce {
 
         const date = new DateService();
         this.date = date.getFormattedDate();
-        this.systemContext = openai.messageFactory(getMarvinMotivationSystemPrompt(this.date, MARVIN_ID), 'system');
+        this.systemContext = openai.messageFactory(getMarvinMotivationSystemPrompt(this.date, peopleMap), 'system');
 
         const quote = _quote ? _quote : DEFAULT_QUOTE;
         console.log("Today's quote: ", quote);
