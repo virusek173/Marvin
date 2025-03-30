@@ -62,5 +62,4 @@ export const getFirstMotivionUserMessagePrompt = (quote: string): string => `
       Napisz jakąś rekomendowaną akcje, która jest zdrowa i może uczynić nas 1% lepszymi dzisiejszego dnia.
       Wpleć go w Twoją powitalną wiadomość. Nie pisz, że to cytat, ale załącz go w oryginalnej formie z autorem.
       Napisz coś żeby zmotywować ludzi na cały dzień.
-      Sprawdź czy Homar nadal działa - przywołaj go i każ mu zaplanować jakieś wydarzenie, rozpisz się na temat tego wydarzenia na 5 słów.
     `
