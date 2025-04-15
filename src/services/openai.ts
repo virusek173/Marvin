@@ -21,7 +21,7 @@ export class OpenAi {
         this.contextInteract = this.contextInteract.bind(this);
     }
 
-    async interact(userPrompt: string, model: string = "gpt-4o-mini", chainOfToughts: boolean = false): Promise<any> {
+    async interact(userPrompt: string, model: string = "gpt-4.1-mini", chainOfToughts: boolean = false): Promise<any> {
         try {
             const context: Message[] = [
                 {
@@ -47,7 +47,7 @@ export class OpenAi {
         }
     }
 
-    async contextInteract(context: Array<Message>, model: string = "gpt-4o-mini", chainOfToughts: boolean = false): Promise<any> {
+    async contextInteract(context: Array<Message>, model: string = "gpt-4.1-mini", chainOfToughts: boolean = false): Promise<any> {
         try {
             console.log(">>>>>>>> context <<<<<<<<", model, context, context.length);
             const completion = await this.openai.chat.completions.create({

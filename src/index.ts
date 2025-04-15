@@ -17,7 +17,7 @@ let client: any = null;
 const init = async (withInitMessage: boolean | undefined = true) => {
   try {
     client?.destroy();
-    const quote = await openai.interact(QUOTE_PROMPT, "gpt-4o")
+    const quote = await openai.interact(QUOTE_PROMPT, "gpt-4.1")
     client = new DiscordServce(quote, withInitMessage);
   } catch (error: any) {
     console.log("Unexpected Error: ", error?.message);
