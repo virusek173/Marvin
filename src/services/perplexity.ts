@@ -60,4 +60,50 @@ export class Perplexity {
         }
     }
 
+    getMappedContext(context: Array<Message>): Array<Message> {
+        return [...context].reduce((acc, message) => {
+            if (acc.length === 0) {
+                acc.push(message);
+                return acc
+            }
+
+            const lastAdded = acc[acc.length - 1];
+
+            if (lastAdded.role === message.role) {
+                acc[acc.length - 1].content += `\n${message.content}`;
+            } else {
+                acc.push(message);
+            }
+            return acc
+
+        }, [] as Array<Message>);
+    }
+
+    async contextInteract(context: Array<Message>, model: string = "sonar", chainOfToughts: boolean = false): Promise<any> {
+        try {
+            const mappedContext = this.getMappedContext(context);
+
+            console.log(">>>>>>>> Perplexity mappedContext <<<<<<<<", model, mappedContext, mappedContext.length);
+
+
+            const completion = await this.perplexity.chat.completions.create({
+                model,
+                messages: [this.systemContext, ...mappedContext],
+                // search_recency_filter="day",
+                ...(chainOfToughts ? { response_format: zodResponseFormat(Response, "response") } : null),
+            });
+
+            console.log('Perplexity Response: ', completion);
+
+
+            return {
+                message: completion.choices[0].message,
+                // sources: (completion as any).citations.map((citation: string) => "`" + citation + "`").splice(0, 3).join(`\n`)
+            };
+        } catch (error: any) {
+            console.error("Perplexity Error:", (error as Error).message);
+
+            throw error;
+        }
+    }
 }

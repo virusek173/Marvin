@@ -45,7 +45,6 @@ const peopleMap = {
 }
 
 const DEFAULT_QUOTE = "Co żyje to żyje";
-const deepseek = new DeepSeek();
 const openai = new OpenAi();
 const decider = new OpenAi();
 const perplexity = new Perplexity();
@@ -113,7 +112,7 @@ export class DiscordServce {
 
                         if (deciderResponse.content.includes('PERPLEXITY')) {
                             message.reply(`To pytanie mnie przerosło. \nZaglądam do Internetu. 🌐`);
-                            const { message: perplexityResponse } = await perplexity.interact(userResponse.content);
+                            const { message: perplexityResponse } = await perplexity.contextInteract(contextService.getContext(channelId));
                             console.log(`perplexityResponse: ${perplexityResponse.content}`);
                             message.channel.sendTyping();
 
