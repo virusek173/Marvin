@@ -1,9 +1,7 @@
 import dotenv from "dotenv";
 import {
     exceptionHandler,
-    loadContextFromFile,
     mapGlobalNameNameToRealName,
-    saveContextToFile,
 } from "../utils/helpers.js";
 import { DeepSeek } from "../services/deepseek.js";
 import { Message, OpenAi } from "../services/openai.js";
@@ -57,7 +55,7 @@ export class DiscordServce {
     private systemContext: Message;
     constructor(_quote: string | undefined,
         withInitMessage: boolean = true) {
-        const contextService = new ContextService([])
+        const contextService = new ContextService({})
 
         const clientService = new ClientService();
         this.client = clientService.getClient();
@@ -74,19 +72,19 @@ export class DiscordServce {
             try {
                 console.log(`Logged in as ${this.client.user.tag}!`);
 
-                const context = loadContextFromFile("context.json");
+                contextService.loadContextFromFile("context.json");
                 const firstUserMessage = openai.messageFactory(getFirstMotivionUserMessagePrompt(quote));
 
-                contextService.setContext(context);
                 if (!withInitMessage) {
                     channel.send(`Nie było mnie, ale wstałem z... Dockera.`);
 
                     return;
                 }
-                contextService.pushWithLimit(firstUserMessage);
+                contextService.pushWithLimit(firstUserMessage, CHANNEL_ID);
+                const context = contextService.getContext(CHANNEL_ID);
                 const message = await openai.contextInteract([this.systemContext, ...context]);
 
-                contextService.pushWithLimit(message);
+                contextService.pushWithLimit(message, CHANNEL_ID);
                 channel.send(message.content);
             } catch (error: any) {
                 return exceptionHandler(error, channel)
@@ -94,20 +92,23 @@ export class DiscordServce {
         });
 
         this.client.on("messageCreate", async (message: any) => {
+            const userResponse = this.userResponseFactory(message)
+
+            const channelId = message?.channelId;
+            contextService.pushWithLimit(userResponse, channelId);
             if (
                 message.content.includes(MARVIN_ID) ||
                 message.mentions?.repliedUser?.username === "Marvin"
             ) {
                 if (message.author.username !== "Marvin") {
                     try {
+                        const { channelId } = message;
                         let { interact, messageAddition } = this.getResponseModelFunction(message)
-                        const userResponse = this.userResponseFactory(message)
                         let assResponse = null;
 
-                        contextService.pushWithLimit(userResponse);
                         const deciderResponse = await decider.contextInteract([
                             openai.messageFactory(DECIDER_SYSTEM_PROMPT, 'system'),
-                            ...contextService.getContext(),
+                            ...contextService.getContext(channelId),
                         ])
 
                         if (deciderResponse.content.includes('PERPLEXITY')) {
@@ -120,23 +121,23 @@ export class DiscordServce {
 
                             assResponse = await interact([
                                 this.systemContext,
-                                ...contextService.getContext(),
+                                ...contextService.getContext(channelId),
                                 userRequest,
                             ]);
                         } else {
                             message.channel.sendTyping();
                             assResponse = await interact([
                                 this.systemContext,
-                                ...contextService.getContext(),
+                                ...contextService.getContext(channelId),
                             ]);
                         }
 
-                        assResponse && contextService.pushWithLimit(assResponse);
+                        assResponse && contextService.pushWithLimit(assResponse, channelId);
 
                         const responseContent = `${assResponse.content.substring(0, 1950)}\n\n${messageAddition}`;
                         message.reply(responseContent);
 
-                        saveContextToFile("context.json", contextService.getContext());
+                        contextService.saveContextToFile("context.json");
                     } catch (error: any) {
                         return exceptionHandler(error, message)
                     };
