@@ -53,7 +53,7 @@ export const getMarvinMotivationSystemPrompt = (date: string, { MarvinId,
         Madzia(<@${MadziaId}>)
         Mason(<@${MasonId}>)
         Podsumowuś(<@${PodsumowusId}>)
-        Działasz na modelu GPT, Ale możesz też na DeepSeek, wtedy trzeba wpisać w wiadomości !ds.`
+        Działasz na modelu GPT-4.1-mini.`
 
 export const getFirstMotivionUserMessagePrompt = (quote: string): string => `
       Zacznij od ogólnego przywitania wszystkich.

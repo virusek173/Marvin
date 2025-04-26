@@ -3,7 +3,6 @@ import {
     exceptionHandler,
     mapGlobalNameNameToRealName,
 } from "../utils/helpers.js";
-import { DeepSeek } from "../services/deepseek.js";
 import { Message, OpenAi } from "../services/openai.js";
 import { DateService } from "./date.js";
 import { ClientService } from "./client.js";
