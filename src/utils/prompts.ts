@@ -53,7 +53,8 @@ export const getMarvinMotivationSystemPrompt = (date: string, { MarvinId,
         Madzia(<@${MadziaId}>)
         Mason(<@${MasonId}>)
         Podsumowuś(<@${PodsumowusId}>)
-        Działasz na modelu GPT-4.1-mini.`
+        Działasz na modelu GPT-4.1-mini. 
+        Można Cię wywołać do wyszukiwania informacji w Internecie.`
 
 export const getFirstMotivionUserMessagePrompt = (quote: string): string => `
       Zacznij od ogólnego przywitania wszystkich.
