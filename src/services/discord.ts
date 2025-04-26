@@ -21,6 +21,7 @@ const {
     DISCORD_CLIENT_TOKEN,
     CHANNEL_ID,
     MARVIN_ID,
+    MARVIN_USERNAME,
     HOMAR_ID,
     JACEK_ID,
     DOMIN_ID,
@@ -92,18 +93,17 @@ export class DiscordServce {
         });
 
         this.client.on("messageCreate", async (message: any) => {
-            const userResponse = this.userResponseFactory(message)
+            if (message.author.username !== MARVIN_USERNAME) {
+                const userResponse = this.userResponseFactory(message)
+                const channelId = message?.channelId;
 
-            const channelId = message?.channelId;
-            contextService.pushWithLimit(userResponse, channelId);
-            if (
-                message.content.includes(MARVIN_ID) ||
-                message.mentions?.repliedUser?.username === "Marvin"
-            ) {
-                if (message.author.username !== "Marvin") {
+                contextService.pushWithLimit(userResponse, channelId);
+                if (
+                    message.content.includes(MARVIN_ID) ||
+                    message.mentions?.repliedUser?.username === MARVIN_USERNAME
+                ) {
                     try {
                         const { channelId } = message;
-                        let { interact, messageAddition } = this.getResponseModelFunction(message)
                         let assResponse = null;
 
                         const deciderResponse = await decider.contextInteract([
@@ -119,14 +119,14 @@ export class DiscordServce {
 
                             const userRequest = openai.messageFactory(getPerplexityToMarvinResponsePrompt(perplexityResponse.content));
 
-                            assResponse = await interact([
+                            assResponse = await openai.contextInteract([
                                 this.systemContext,
                                 ...contextService.getContext(channelId),
                                 userRequest,
                             ]);
                         } else {
                             message.channel.sendTyping();
-                            assResponse = await interact([
+                            assResponse = await openai.contextInteract([
                                 this.systemContext,
                                 ...contextService.getContext(channelId),
                             ]);
@@ -134,7 +134,7 @@ export class DiscordServce {
 
                         assResponse && contextService.pushWithLimit(assResponse, channelId);
 
-                        const responseContent = `${assResponse.content.substring(0, 1950)}\n\n${messageAddition}`;
+                        const responseContent = `${assResponse.content.substring(0, 1950)}`;
                         message.reply(responseContent);
 
                         contextService.saveContextToFile("context.json");
@@ -146,14 +146,6 @@ export class DiscordServce {
         });
 
         this.client.login(DISCORD_CLIENT_TOKEN);
-    }
-
-    getResponseModelFunction(message: any) {
-        const deepseekModel = message.content.toLowerCase().includes("!ds")
-        const interact = deepseekModel ? deepseek.interact : openai.contextInteract;
-        const messageAddition = deepseekModel ? `Z wyrazami szacunku,\nTwój model DeepSeek.` : '';
-
-        return { interact, messageAddition }
     }
 
     userResponseFactory(message: any) {
