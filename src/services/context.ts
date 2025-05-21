@@ -24,7 +24,7 @@ export class ContextService {
         }
     }
 
-    pushWithLimit(message: any, _channelId?: string, limit: number = 20) {
+    pushWithLimit(message: any, _channelId?: string, limit: number = 30) {
         const channelId = this.ensureProperChannel(_channelId);
         this.ensureChannelExists(channelId);
         const context = this.contextMap[channelId];

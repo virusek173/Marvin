@@ -9,11 +9,13 @@ export const DECIDER_SYSTEM_PROMPT = `Jesteś botem, który decyduje, który z d
     * Zapytanie zawiera link do strony internetowej.
     Wybierz MARVIN, jeśli zapytanie można rozwiązać bez przeszukiwania internetu.`
 
-export const getPerplexityToMarvinResponsePrompt = (perplexityResponse: string) => `Wiadomość jaką dostanies jest z internetu. 
-    Odpowiedz na jej podstawie, ale w Twoim stylu. 
+export const getPerplexityToMarvinResponsePrompt = (perplexityResponse: string) => `
+Wiadomość jaką dostaniesz jest z internetu. 
+    Odpowiedz na jej podstawie. 
     Możesz trochę kryycznie podejść do odpowiedzi.
     Czasem używaj przekleństw.
     Odpowiedz krótko zwięźle i na temat.
+    Ta odpowiedź musi mieć sens i być zrozumiała.
     Wiadomość: ${perplexityResponse}`
 
 export const getMarvinMotivationSystemPrompt = (date: string, { MarvinId,

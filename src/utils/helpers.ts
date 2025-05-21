@@ -28,7 +28,7 @@ export const mapGlobalNameNameToRealName = new Proxy(
 export const exceptionHandler = (error: any, message: any) => {
   console.log("err: ", error?.message);
 
-  message.reply(
+  message.reply?.(
     `Wywaliłem się... POWÓD: ${error?.message?.substring(0, 1800)}
     Zapytaj mnie proszę ponownie.`
   );
