@@ -8,6 +8,7 @@ import { DateService } from "./date.js";
 import { ClientService } from "./client.js";
 import { ContextService } from "./context.js";
 import { Perplexity } from "./perplexity.js";
+import { Grok } from "./grok.js";
 import {
     DECIDER_SYSTEM_PROMPT,
     getFirstMotivionUserMessagePrompt,
@@ -45,8 +46,10 @@ const peopleMap = {
 
 const DEFAULT_QUOTE = "Co żyje to żyje";
 const openai = new OpenAi();
+const grok = new Grok();
 const decider = new OpenAi();
 const perplexity = new Perplexity();
+const MODEL = grok;
 
 export class DiscordServce {
     private client: any;
@@ -61,7 +64,7 @@ export class DiscordServce {
 
         const date = new DateService();
         this.date = date.getFormattedDate();
-        this.systemContext = openai.messageFactory(getMarvinMotivationSystemPrompt(this.date, peopleMap), 'system');
+        this.systemContext = MODEL.messageFactory(getMarvinMotivationSystemPrompt(this.date, peopleMap), 'system');
 
         const quote = _quote ? _quote : DEFAULT_QUOTE;
         console.log("Today's quote: ", quote);
@@ -72,16 +75,16 @@ export class DiscordServce {
                 console.log(`Logged in as ${this.client.user.tag}!`);
 
                 contextService.loadContextFromFile("context.json");
-                const firstUserMessage = openai.messageFactory(getFirstMotivionUserMessagePrompt(quote));
+                const firstUserMessage = MODEL.messageFactory(getFirstMotivionUserMessagePrompt(quote));
 
                 if (!withInitMessage) {
-                    channel.send(`Nie było mnie, ale wstałem z... Dockera.`);
+                    channel.send(`Nie było mnie, ale wstałem z... Dockera. Działam na modelu: ${MODEL.getModelName()}.`);
 
                     return;
                 }
                 contextService.pushWithLimit(firstUserMessage, CHANNEL_ID);
                 const context = contextService.getContext(CHANNEL_ID);
-                const message = await openai.contextInteract([this.systemContext, ...context]);
+                const message = await MODEL.contextInteract([this.systemContext, ...context]);
 
                 contextService.pushWithLimit(message, CHANNEL_ID);
                 channel.send(message.content);
@@ -105,7 +108,7 @@ export class DiscordServce {
                         let assResponse = null;
 
                         const deciderResponse = await decider.contextInteract([
-                            openai.messageFactory(DECIDER_SYSTEM_PROMPT, 'system'),
+                            MODEL.messageFactory(DECIDER_SYSTEM_PROMPT, 'system'),
                             ...contextService.getContext(channelId),
                         ])
 
@@ -115,16 +118,16 @@ export class DiscordServce {
                             console.log(`perplexityResponse: ${perplexityResponse.content}`);
                             message.channel.sendTyping();
 
-                            const userRequest = openai.messageFactory(getPerplexityToMarvinResponsePrompt(perplexityResponse.content));
+                            const userRequest = MODEL.messageFactory(getPerplexityToMarvinResponsePrompt(perplexityResponse.content));
 
-                            assResponse = await openai.contextInteract([
+                            assResponse = await MODEL.contextInteract([
                                 this.systemContext,
                                 ...contextService.getContext(channelId),
                                 userRequest,
                             ]);
                         } else {
                             message.channel.sendTyping();
-                            assResponse = await openai.contextInteract([
+                            assResponse = await MODEL.contextInteract([
                                 this.systemContext,
                                 ...contextService.getContext(channelId),
                             ]);
@@ -149,7 +152,7 @@ export class DiscordServce {
     userResponseFactory(message: any) {
         const realName = mapGlobalNameNameToRealName[message.author.globalName];
         const modifiedUserResponseContent = `${realName}: ${message.content}`;
-        return openai.messageFactory(modifiedUserResponseContent)
+        return MODEL.messageFactory(modifiedUserResponseContent)
     }
 
     destroy() {

@@ -17,7 +17,7 @@ export interface Message {
   content: string;
 }
 
-export class OpenAi {
+export class Grok {
   private grok: OpenAI;
 
   constructor() {
@@ -90,5 +90,9 @@ export class OpenAi {
       role,
       content,
     };
+  }
+
+  getModelName(): string {
+    return "GROK";
   }
 }

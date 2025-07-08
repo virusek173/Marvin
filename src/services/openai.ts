@@ -71,4 +71,8 @@ export class OpenAi {
             content,
         }
     }
+
+    getModelName(): string {
+        return "GPT";
+    }
 }
