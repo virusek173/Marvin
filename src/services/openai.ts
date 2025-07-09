@@ -2,6 +2,8 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { zodResponseFormat } from "openai/helpers/zod";
 
+const DEFAULT_MODEL_NAME = "gpt-4.1";
+
 const Response = z.object({
     _toughts: z.string(),
     answer: z.string(),
@@ -21,7 +23,7 @@ export class OpenAi {
         this.contextInteract = this.contextInteract.bind(this);
     }
 
-    async interact(userPrompt: string, model: string = "gpt-4.1-mini", chainOfToughts: boolean = false): Promise<any> {
+    async interact(userPrompt: string, model: string = DEFAULT_MODEL_NAME, chainOfToughts: boolean = false): Promise<any> {
         try {
             const context: Message[] = [
                 {
@@ -47,7 +49,7 @@ export class OpenAi {
         }
     }
 
-    async contextInteract(context: Array<Message>, model: string = "gpt-4.1-mini", chainOfToughts: boolean = false): Promise<any> {
+    async contextInteract(context: Array<Message>, model: string = DEFAULT_MODEL_NAME, chainOfToughts: boolean = false): Promise<any> {
         try {
             console.log(">>>>>>>> context <<<<<<<<", model, context, context.length);
             const completion = await this.openai.chat.completions.create({
@@ -72,7 +74,7 @@ export class OpenAi {
         }
     }
 
-    getModelName(): string {
-        return "GPT";
+    getDefaultModelName(): string {
+        return DEFAULT_MODEL_NAME;
     }
 }

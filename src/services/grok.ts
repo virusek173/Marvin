@@ -7,6 +7,8 @@ dotenv.config();
 const { GROK_API } = process.env;
 if (!GROK_API) console.error("GROK_API environment variable is not set");
 
+const DEFAULT_MODEL_NAME = "grok-3";
+
 const Response = z.object({
   _toughts: z.string(),
   answer: z.string(),
@@ -31,7 +33,7 @@ export class Grok {
 
   async interact(
     userPrompt: string,
-    model: string = "gpt-4o-mini",
+    model: string = DEFAULT_MODEL_NAME,
     chainOfToughts: boolean = false
   ): Promise<any> {
     try {
@@ -63,7 +65,7 @@ export class Grok {
 
   async contextInteract(
     context: Array<Message>,
-    model: string = "grok-3",
+    model: string = DEFAULT_MODEL_NAME,
     chainOfToughts: boolean = false
   ): Promise<any> {
     try {
@@ -92,7 +94,7 @@ export class Grok {
     };
   }
 
-  getModelName(): string {
-    return "GROK";
+  getDefaultModelName(): string {
+    return DEFAULT_MODEL_NAME;
   }
 }

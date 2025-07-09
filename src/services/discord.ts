@@ -78,7 +78,7 @@ export class DiscordServce {
                 const firstUserMessage = MODEL.messageFactory(getFirstMotivionUserMessagePrompt(quote));
 
                 if (!withInitMessage) {
-                    channel.send(`Nie było mnie, ale wstałem z... Dockera. Działam na modelu: ${MODEL.getModelName()}.`);
+                    channel.send(`Nie było mnie, ale wstałem z... Dockera. Działam na modelu: ${MODEL.getDefaultModelName()}.`);
 
                     return;
                 }
