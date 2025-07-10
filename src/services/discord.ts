@@ -49,7 +49,7 @@ const openai = new OpenAi();
 const grok = new Grok();
 const decider = new OpenAi();
 const perplexity = new Perplexity();
-const MODEL = grok;
+const MODEL = openai;
 
 export class DiscordServce {
     private client: any;

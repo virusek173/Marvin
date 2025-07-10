@@ -1,9 +1,9 @@
 import cron from "node-cron";
-import { Grok } from "./services/grok.js";
+import { OpenAi } from "./services/openai.js";
 import { QUOTE_PROMPT } from "./utils/prompts.js";
 import { DiscordServce } from "./services/discord.js";
 
-const openai = new Grok();
+const openai = new OpenAi();
 const croneMap = {
   EVERY_DAY_SIX_AM: "0 6 * * *",
   EVERY_MINUTE: "* * * * *",
@@ -12,7 +12,7 @@ const croneOptions = {
   timezone: "Europe/Warsaw",
 };
 const WITH_INIT_MESSAGE = false;
-const QUOTE_MODEL_NAME = "grok-4";
+const QUOTE_MODEL_NAME = "gpt-4.1";
 
 let client: any = null;
 
