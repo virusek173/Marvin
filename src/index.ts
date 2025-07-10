@@ -12,7 +12,7 @@ const croneOptions = {
   timezone: "Europe/Warsaw",
 };
 const WITH_INIT_MESSAGE = false;
-const QUOTE_MODEL_NAME = "grok-3";
+const QUOTE_MODEL_NAME = "grok-4";
 
 let client: any = null;
 

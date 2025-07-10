@@ -7,7 +7,7 @@ dotenv.config();
 const { GROK_API } = process.env;
 if (!GROK_API) console.error("GROK_API environment variable is not set");
 
-const DEFAULT_MODEL_NAME = "grok-3";
+const DEFAULT_MODEL_NAME = "grok-4";
 
 const Response = z.object({
   _toughts: z.string(),
