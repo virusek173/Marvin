@@ -15,6 +15,7 @@ import {
     getMarvinMotivationSystemPrompt,
     getPerplexityToMarvinResponsePrompt
 } from "../utils/prompts.js";
+import { FIRST_MESSAGE_MODEL_NAME } from "../utils/consts.js";
 
 dotenv.config();
 const {
@@ -84,7 +85,7 @@ export class DiscordServce {
                 }
                 contextService.pushWithLimit(firstUserMessage, CHANNEL_ID);
                 const context = contextService.getContext(CHANNEL_ID);
-                const message = await MODEL.contextInteract([this.systemContext, ...context]);
+                const message = await MODEL.contextInteract([this.systemContext, ...context], FIRST_MESSAGE_MODEL_NAME);
 
                 contextService.pushWithLimit(message, CHANNEL_ID);
                 channel.send(message.content);

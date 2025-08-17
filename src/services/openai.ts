@@ -1,8 +1,7 @@
 import OpenAI from "openai";
 import { z } from "zod";
 import { zodResponseFormat } from "openai/helpers/zod";
-
-const DEFAULT_MODEL_NAME = "gpt-4.1";
+import { DEFAULT_MODEL_NAME } from "../utils/consts.js";
 
 const Response = z.object({
     _toughts: z.string(),
@@ -38,7 +37,7 @@ export class OpenAi {
             const completion = await this.openai.chat.completions.create({
                 model,
                 messages: context,
-                max_tokens: 2500,
+                max_completion_tokens: 2500,
                 ...(chainOfToughts ? { response_format: zodResponseFormat(Response, "response") } : null),
             });
 
@@ -55,7 +54,7 @@ export class OpenAi {
             const completion = await this.openai.chat.completions.create({
                 model,
                 messages: context,
-                max_tokens: 2500,
+                max_completion_tokens: 2500,
                 ...(chainOfToughts ? { response_format: zodResponseFormat(Response, "response") } : null),
             });
 

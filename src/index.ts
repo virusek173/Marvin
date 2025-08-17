@@ -1,8 +1,10 @@
 import cron from "node-cron";
 import { OpenAi } from "./services/openai.js";
-import { QUOTE_PROMPT } from "./utils/prompts.js";
 import { DiscordServce } from "./services/discord.js";
+import { QUOTE_MODEL_NAME } from "./utils/consts.js";
+import { pushWithLimit, quotePromptFactory } from "./utils/helpers.js";
 
+const quotesArray: string[] = [];
 const openai = new OpenAi();
 const croneMap = {
   EVERY_DAY_SIX_AM: "0 6 * * *",
@@ -12,14 +14,15 @@ const croneOptions = {
   timezone: "Europe/Warsaw",
 };
 const WITH_INIT_MESSAGE = false;
-const QUOTE_MODEL_NAME = "gpt-4.1";
 
 let client: any = null;
 
 const init = async (withInitMessage: boolean | undefined = true) => {
   try {
     client?.destroy();
-    const quote = await openai.interact(QUOTE_PROMPT, QUOTE_MODEL_NAME)
+    const quotePro = quotePromptFactory(quotesArray);
+    const quote = await openai.interact(quotePromptFactory(quotesArray), QUOTE_MODEL_NAME)
+    pushWithLimit(quotesArray, quote?.content);
     client = new DiscordServce(quote?.content, withInitMessage);
   } catch (error: any) {
     console.log("Unexpected Error: ", error?.message);

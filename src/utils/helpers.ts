@@ -1,3 +1,5 @@
+import { QUOTE_PROMPT } from "./prompts.js";
+
 export const proxyHandler = {
   get(target: any, prop: any) {
     return target[prop] || prop || "";
@@ -33,3 +35,17 @@ export const exceptionHandler = (error: any, message: any) => {
     Zapytaj mnie proszę ponownie.`
   );
 }
+
+export const pushWithLimit = (array: any[], item: any, limit: number = 10) => {
+  if (array.length >= limit) {
+    array.shift();
+  }
+
+  item && array.push(item);
+  return array;
+};
+
+
+export const quotePromptFactory = (quotesArray: string[]) => `${QUOTE_PROMPT} 
+Cytat musi się różnić od podanych cytatów.
+Poprzednie cytaty: ${quotesArray.join("\n,")}`;
