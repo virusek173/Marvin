@@ -4,6 +4,11 @@ import * as fs from "fs";
 type Messages = Array<Message>;
 type ContextMap = Record<string, Messages>;
 
+/**
+ * Manages per-channel conversation history for the Discord bot.
+ * Each channel has an independent message array (max 30 messages by default, FIFO).
+ * Context is persisted to disk via `saveContextToFile` and restored on bot startup via `loadContextFromFile`.
+ */
 export class ContextService {
     private contextMap: ContextMap;
 
@@ -11,6 +16,7 @@ export class ContextService {
         this.contextMap = initContextMap;
     }
 
+    /** Returns 'global' if channelId is falsy — used as a fallback key in contextMap. */
     ensureProperChannel(channelId?: string) {
         if (!channelId) {
             return 'global'
@@ -18,12 +24,21 @@ export class ContextService {
         return channelId;
     }
 
+    /** Initializes an empty message array for a channel if it doesn't exist yet. */
     ensureChannelExists(channelId: string) {
         if (!this.contextMap[channelId]) {
             this.contextMap[channelId] = [];
         }
     }
 
+    /**
+     * Appends a message to a channel's context, removing the oldest if at capacity.
+     * Default limit is 30 messages (higher than the global pushWithLimit default of 10).
+     *
+     * @param message - The message object to store (OpenAI format: {role, content})
+     * @param _channelId - Discord channel ID; falls back to 'global' if undefined
+     * @param limit - Max messages to keep per channel (default: 30)
+     */
     pushWithLimit(message: any, _channelId?: string, limit: number = 30) {
         const channelId = this.ensureProperChannel(_channelId);
         this.ensureChannelExists(channelId);

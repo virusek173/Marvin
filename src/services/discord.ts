@@ -52,10 +52,26 @@ const decider = new OpenAi();
 const perplexity = new Perplexity();
 const MODEL = openai;
 
+/**
+ * Main Discord bot service. Handles:
+ * - Bot initialization and login
+ * - Sending a morning motivational message on "ready" (if withInitMessage=true)
+ * - Routing incoming messages to the appropriate AI service (MARVIN or PERPLEXITY)
+ *
+ * Message routing logic:
+ * 1. All non-bot messages are stored in context (ContextService)
+ * 2. If the message mentions Marvin (@Marvin or reply), the decider model classifies it
+ * 3. PERPLEXITY: fetches web data first, then asks MODEL to rephrase the result
+ * 4. MARVIN: answers directly using conversation context + system prompt
+ */
 export class DiscordServce {
     private client: any;
     private date: string;
     private systemContext: Message;
+    /**
+     * @param _quote - Motivational quote for today's greeting message
+     * @param withInitMessage - If false, bot starts silently (no morning message). Default: true.
+     */
     constructor(_quote: string | undefined,
         withInitMessage: boolean = true) {
         const contextService = new ContextService({})
@@ -150,6 +166,11 @@ export class DiscordServce {
         this.client.login(DISCORD_CLIENT_TOKEN);
     }
 
+    /**
+     * Converts a Discord message into a context-ready Message object.
+     * Prepends the sender's real name (from mapGlobalNameNameToRealName) to the content.
+     * Example: "zoltymason: hej co słychać" → {role: 'user', content: 'Mason: hej co słychać'}
+     */
     userResponseFactory(message: any) {
         const realName = mapGlobalNameNameToRealName[message.author.globalName];
         const modifiedUserResponseContent = `${realName}: ${message.content}`;

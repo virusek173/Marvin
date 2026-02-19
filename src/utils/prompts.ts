@@ -1,5 +1,13 @@
+/** System prompt for fetching a single motivational quote. Used in quotePromptFactory. */
 export const QUOTE_PROMPT = `Podaj mi istniejący motywujący i inspirujący cytat. Odpowiedz tylko nim i autorem. Niczym więcej.`
-export const DECIDER_SYSTEM_PROMPT = `Jesteś botem, który decyduje, który z dwóch innych botów powinien przyjąć zapytanie użytkownika. 
+
+/**
+ * System prompt for the decider model.
+ * The decider receives the full channel context and responds with exactly one word: MARVIN or PERPLEXITY.
+ * - PERPLEXITY: for real-time/internet queries (news, sports, links, predictions)
+ * - MARVIN: for everything else (general knowledge, conversation, motivation)
+ */
+export const DECIDER_SYSTEM_PROMPT = `Jesteś botem, który decyduje, który z dwóch innych botów powinien przyjąć zapytanie użytkownika.
     Możesz wybrać między botami: MARVIN i PERPLEXITY. 
     Odpowiedz jednym słowem: MARVIN lub PERPLEXITY. 
     Wybierz PERPLEXITY, jeśli:
@@ -9,6 +17,12 @@ export const DECIDER_SYSTEM_PROMPT = `Jesteś botem, który decyduje, który z d
     * Zapytanie zawiera link do strony internetowej.
     Wybierz MARVIN, jeśli zapytanie można rozwiązać bez przeszukiwania internetu.`
 
+/**
+ * Wraps Perplexity's raw internet response for MODEL to rephrase in Marvin's voice.
+ * MODEL receives this as a user message appended after the full conversation context.
+ *
+ * @param perplexityResponse - Raw text response from the Perplexity service
+ */
 export const getPerplexityToMarvinResponsePrompt = (perplexityResponse: string) => `
 Wiadomość jaką dostaniesz jest z internetu. 
     Odpowiedz na jej podstawie. 
@@ -18,6 +32,14 @@ Wiadomość jaką dostaniesz jest z internetu.
     Ta odpowiedź musi mieć sens i być zrozumiała.
     Wiadomość: ${perplexityResponse}`
 
+/**
+ * Builds the main system prompt that defines Marvin's personality and team knowledge.
+ * This prompt is injected as the first message in every AI request (role: 'system').
+ * It includes today's date and Discord mention IDs for all team members.
+ *
+ * @param date - Formatted date string (YYYY.MM.DD) from DateService
+ * @param peopleMap - Object with Discord user IDs for each team member (from .env)
+ */
 export const getMarvinMotivationSystemPrompt = (date: string, { MarvinId,
     HomarId,
     JacekId,
@@ -57,6 +79,12 @@ export const getMarvinMotivationSystemPrompt = (date: string, { MarvinId,
         Podsumowuś(<@${PodsumowusId}>)
         Można Cię wywołać do wyszukiwania informacji w Internecie.`
 
+/**
+ * Builds the morning greeting prompt sent as the first user message after bot startup.
+ * Instructs Marvin to greet everyone (@here), include today's quote, and share a daily tip.
+ *
+ * @param quote - Today's motivational quote (fetched by quotePromptFactory)
+ */
 export const getFirstMotivionUserMessagePrompt = (quote: string): string => `
       Zacznij od ogólnego przywitania wszystkich.
       Przywitaj się z przywołaniem @here.
