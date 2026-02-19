@@ -11,6 +11,7 @@ import { Perplexity } from "./perplexity.js";
 import { Grok } from "./grok.js";
 import {
     DECIDER_SYSTEM_PROMPT,
+    getSpontaneousMotivationSystemPrompt,
     getFirstMotivionUserMessagePrompt,
     getMarvinMotivationSystemPrompt,
     getPerplexityToMarvinResponsePrompt
@@ -116,49 +117,15 @@ export class DiscordServce {
                 const channelId = message?.channelId;
 
                 contextService.pushWithLimit(userResponse, channelId);
-                if (
-                    message.content.includes(MARVIN_ID) ||
-                    message.mentions?.repliedUser?.username === MARVIN_USERNAME
-                ) {
-                    try {
-                        const { channelId } = message;
-                        let assResponse = null;
 
-                        const deciderResponse = await decider.contextInteract([
-                            MODEL.messageFactory(DECIDER_SYSTEM_PROMPT, 'system'),
-                            ...contextService.getContext(channelId),
-                        ])
+                const isMentioned = message.content.includes(MARVIN_ID) ||
+                    message.mentions?.repliedUser?.username === MARVIN_USERNAME;
+                const isSpontaneous = !isMentioned && Math.random() < 0.02;
 
-                        if (deciderResponse.content.includes('PERPLEXITY')) {
-                            message.reply(`To pytanie mnie przerosło. \nZaglądam do Internetu. 🌐`);
-                            const { message: perplexityResponse } = await perplexity.contextInteract(contextService.getContext(channelId));
-                            console.log(`perplexityResponse: ${perplexityResponse.content}`);
-                            message.channel.sendTyping();
-
-                            const userRequest = MODEL.messageFactory(getPerplexityToMarvinResponsePrompt(perplexityResponse.content));
-
-                            assResponse = await MODEL.contextInteract([
-                                this.systemContext,
-                                ...contextService.getContext(channelId),
-                                userRequest,
-                            ]);
-                        } else {
-                            message.channel.sendTyping();
-                            assResponse = await MODEL.contextInteract([
-                                this.systemContext,
-                                ...contextService.getContext(channelId),
-                            ]);
-                        }
-
-                        assResponse && contextService.pushWithLimit(assResponse, channelId);
-
-                        const responseContent = `${assResponse.content.substring(0, 1950)}`;
-                        message.reply(responseContent);
-
-                        contextService.saveContextToFile("context.json");
-                    } catch (error: any) {
-                        return exceptionHandler(error, message)
-                    };
+                if (isSpontaneous) {
+                    await this.handleSpontaneousMotivation(message, contextService);
+                } else if (isMentioned) {
+                    await this.handleMentioned(message, contextService);
                 }
             }
         });
@@ -175,6 +142,65 @@ export class DiscordServce {
         const realName = mapGlobalNameNameToRealName[message.author.globalName];
         const modifiedUserResponseContent = `${realName}: ${message.content}`;
         return MODEL.messageFactory(modifiedUserResponseContent)
+    }
+
+    /** Responds spontaneously (1% chance) to an unprompted message, motivating the sender based on context. */
+    async handleSpontaneousMotivation(message: any, contextService: ContextService) {
+        try {
+            message.channel.sendTyping();
+            const mess = getSpontaneousMotivationSystemPrompt()
+            console.log('mess: ', mess)
+            const response = await MODEL.contextInteract([
+                MODEL.messageFactory(mess, 'system'),
+                ...contextService.getContext(message.channelId),
+            ]);
+            if (response) {
+                contextService.pushWithLimit(response, message.channelId);
+                message.reply(response.content.substring(0, 1950));
+                contextService.saveContextToFile("context.json");
+            }
+        } catch (error: any) {
+            return exceptionHandler(error, message);
+        }
+    }
+
+    /** Handles a message that directly mentions or replies to Marvin. Routes to MARVIN or PERPLEXITY. */
+    async handleMentioned(message: any, contextService: ContextService) {
+        try {
+            const { channelId } = message;
+            let assResponse = null;
+
+            const deciderResponse = await decider.contextInteract([
+                MODEL.messageFactory(DECIDER_SYSTEM_PROMPT, 'system'),
+                ...contextService.getContext(channelId),
+            ]);
+
+            if (deciderResponse.content.includes('PERPLEXITY')) {
+                message.reply(`To pytanie mnie przerosło. \nZaglądam do Internetu. 🌐`);
+                const { message: perplexityResponse } = await perplexity.contextInteract(contextService.getContext(channelId));
+                console.log(`perplexityResponse: ${perplexityResponse.content}`);
+                message.channel.sendTyping();
+
+                const userRequest = MODEL.messageFactory(getPerplexityToMarvinResponsePrompt(perplexityResponse.content));
+                assResponse = await MODEL.contextInteract([
+                    this.systemContext,
+                    ...contextService.getContext(channelId),
+                    userRequest,
+                ]);
+            } else {
+                message.channel.sendTyping();
+                assResponse = await MODEL.contextInteract([
+                    this.systemContext,
+                    ...contextService.getContext(channelId),
+                ]);
+            }
+
+            assResponse && contextService.pushWithLimit(assResponse, channelId);
+            message.reply(assResponse.content.substring(0, 1950));
+            contextService.saveContextToFile("context.json");
+        } catch (error: any) {
+            return exceptionHandler(error, message);
+        }
     }
 
     destroy() {

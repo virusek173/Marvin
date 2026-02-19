@@ -1,8 +1,11 @@
 import cron from "node-cron";
+import dotenv from "dotenv";
 import { OpenAi } from "./services/openai.js";
 import { DiscordServce } from "./services/discord.js";
 import { QUOTE_MODEL_NAME } from "./utils/consts.js";
 import { pushWithLimit, quotePromptFactory } from "./utils/helpers.js";
+
+dotenv.config();
 
 const quotesArray: string[] = [];
 const openai = new OpenAi();
@@ -14,6 +17,7 @@ const croneOptions = {
   timezone: "Europe/Warsaw",
 };
 const WITH_INIT_MESSAGE = false;
+const WITH_CRON = process.env.WITH_CRON !== "false";
 
 let client: any = null;
 
@@ -33,5 +37,9 @@ init(WITH_INIT_MESSAGE);
 
 const croneTime = croneMap.EVERY_DAY_SIX_AM;
 
-console.log(`Uruchamiam crone z czasem: ${croneTime}`);
-cron.schedule(croneTime, () => init(), croneOptions);
+if (WITH_CRON) {
+  console.log(`Uruchamiam crone z czasem: ${croneTime}`);
+  cron.schedule(croneTime, () => init(), croneOptions);
+} else {
+  console.log("Cron wyłączony (WITH_CRON=false).");
+}
