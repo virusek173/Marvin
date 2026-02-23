@@ -52,6 +52,9 @@ const grok = new Grok();
 const decider = new OpenAi();
 const perplexity = new Perplexity();
 const MODEL = openai;
+const SPONTANEOUS_CHANCE = 0.02;
+const SPONTANEOUS_COOLDOWN = 30;
+let spontaneousCooldownCounter = 0;
 
 /**
  * Main Discord bot service. Handles:
@@ -120,9 +123,14 @@ export class DiscordServce {
 
                 const isMentioned = message.content.includes(MARVIN_ID) ||
                     message.mentions?.repliedUser?.username === MARVIN_USERNAME;
-                const isSpontaneous = !isMentioned && Math.random() < 0.02;
+                const isSpontaneous = !isMentioned && spontaneousCooldownCounter <= 0 && Math.random() < SPONTANEOUS_CHANCE;
+
+                if (spontaneousCooldownCounter > 0) {
+                    spontaneousCooldownCounter -= 1
+                };
 
                 if (isSpontaneous) {
+                    spontaneousCooldownCounter = SPONTANEOUS_COOLDOWN;
                     await this.handleSpontaneousMotivation(message, contextService);
                 } else if (isMentioned) {
                     await this.handleMentioned(message, contextService);
