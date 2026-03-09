@@ -134,6 +134,8 @@ export class DiscordServce {
                     message.channel.sendTyping();
                     await new Promise(resolve => setTimeout(resolve, 2000));
                     message.reply(SPONTANEOUS_COOLDOWN_REPLY);
+                    contextService.pushWithLimit({ role: 'assistant', content: SPONTANEOUS_COOLDOWN_REPLY }, channelId);
+                    contextService.saveContextToFile("context.json");
                 } else if (luckyRoll) {
                     spontaneousCooldownCounter = SPONTANEOUS_COOLDOWN;
                     await this.handleSpontaneousMotivation(message, contextService);
