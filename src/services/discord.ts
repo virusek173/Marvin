@@ -16,7 +16,7 @@ import {
     getMarvinMotivationSystemPrompt,
     getPerplexityToMarvinResponsePrompt
 } from "../utils/prompts.js";
-import { FIRST_MESSAGE_MODEL_NAME } from "../utils/consts.js";
+import { FIRST_MESSAGE_MODEL_NAME, SPONTANEOUS_MODEL_NAME } from "../utils/consts.js";
 
 dotenv.config();
 const {
@@ -164,7 +164,7 @@ export class DiscordServce {
             const response = await MODEL.contextInteract([
                 MODEL.messageFactory(mess, 'system'),
                 ...contextService.getContext(message.channelId),
-            ]);
+            ], SPONTANEOUS_MODEL_NAME);
             if (response) {
                 contextService.pushWithLimit(response, message.channelId);
                 message.reply(response.content.substring(0, 1950));
@@ -181,6 +181,7 @@ export class DiscordServce {
             const { channelId } = message;
             let assResponse = null;
 
+            message.channel.sendTyping();
             const deciderResponse = await decider.contextInteract([
                 MODEL.messageFactory(DECIDER_SYSTEM_PROMPT, 'system'),
                 ...contextService.getContext(channelId),
@@ -199,7 +200,6 @@ export class DiscordServce {
                     userRequest,
                 ]);
             } else {
-                message.channel.sendTyping();
                 assResponse = await MODEL.contextInteract([
                     this.systemContext,
                     ...contextService.getContext(channelId),
