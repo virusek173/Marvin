@@ -131,6 +131,8 @@ export class DiscordServce {
                 const luckyRoll = !isMentioned && Math.random() < SPONTANEOUS_CHANCE;
 
                 if (luckyRoll && spontaneousCooldownCounter > 0) {
+                    message.channel.sendTyping();
+                    await new Promise(resolve => setTimeout(resolve, 2000));
                     message.reply(SPONTANEOUS_COOLDOWN_REPLY);
                 } else if (luckyRoll) {
                     spontaneousCooldownCounter = SPONTANEOUS_COOLDOWN;
