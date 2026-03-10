@@ -74,7 +74,7 @@ npm test              # Run Jest tests
 ## Docker
 
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
 ## Architecture
