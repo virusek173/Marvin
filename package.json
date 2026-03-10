@@ -8,7 +8,8 @@
     "test": "jest",
     "marvin:build": "tsc",
     "marvin:run": "node dest/src",
-    "marvin": "run-s marvin:build marvin:run"
+    "marvin": "run-s marvin:build marvin:run",
+    "marvin:dev": "tsx watch src/index.ts"
   },
   "author": "",
   "license": "ISC",
@@ -28,6 +29,7 @@
     "jest": "^29.7.0",
     "jsdom": "^25.0.0",
     "ts-jest": "^29.2.5",
+    "tsx": "^4.21.0",
     "typescript": "^5.5.4",
     "zod": "^3.24.1"
   }

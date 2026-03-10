@@ -108,7 +108,7 @@ export class DiscordServce {
                 const context = contextService.getContext(CHANNEL_ID);
                 const message = await MODEL.contextInteract([this.systemContext, ...context], FIRST_MESSAGE_MODEL_NAME);
 
-                contextService.pushWithLimit(message, CHANNEL_ID);
+                contextService.pushWithLimit(this.marvinResponseFactory(message.content), CHANNEL_ID);
                 channel.send(message.content);
             } catch (error: any) {
                 return exceptionHandler(error, channel)
@@ -134,7 +134,7 @@ export class DiscordServce {
                     message.channel.sendTyping();
                     await new Promise(resolve => setTimeout(resolve, 2000));
                     message.reply(SPONTANEOUS_COOLDOWN_REPLY);
-                    contextService.pushWithLimit({ role: 'assistant', content: SPONTANEOUS_COOLDOWN_REPLY }, channelId);
+                    contextService.pushWithLimit(this.marvinResponseFactory(SPONTANEOUS_COOLDOWN_REPLY), channelId);
                     contextService.saveContextToFile("context.json");
                 } else if (luckyRoll) {
                     spontaneousCooldownCounter = SPONTANEOUS_COOLDOWN;
@@ -155,8 +155,14 @@ export class DiscordServce {
      */
     userResponseFactory(message: any) {
         const realName = mapGlobalNameNameToRealName[message.author.globalName];
-        const modifiedUserResponseContent = `${realName}: ${message.content}`;
+        const timestamp = new DateService(message.createdAt).getFormattedDateTime();
+        const modifiedUserResponseContent = `[${timestamp}] ${realName}: ${message.content}`;
         return MODEL.messageFactory(modifiedUserResponseContent)
+    }
+
+    marvinResponseFactory(content: string) {
+        const timestamp = new DateService().getFormattedDateTime();
+        return MODEL.messageFactory(`[${timestamp}] Marvin: ${content}`, 'assistant');
     }
 
     /** Responds spontaneously (1% chance) to an unprompted message, motivating the sender based on context. */
@@ -170,7 +176,7 @@ export class DiscordServce {
                 ...contextService.getContext(message.channelId),
             ], SPONTANEOUS_MODEL_NAME);
             if (response) {
-                contextService.pushWithLimit(response, message.channelId);
+                contextService.pushWithLimit(this.marvinResponseFactory(response.content), message.channelId);
                 message.reply(response.content.substring(0, 1950));
                 contextService.saveContextToFile("context.json");
             }
@@ -210,7 +216,7 @@ export class DiscordServce {
                 ]);
             }
 
-            assResponse && contextService.pushWithLimit(assResponse, channelId);
+            assResponse && contextService.pushWithLimit(this.marvinResponseFactory(assResponse.content), channelId);
             message.reply(assResponse.content.substring(0, 1950));
             contextService.saveContextToFile("context.json");
         } catch (error: any) {

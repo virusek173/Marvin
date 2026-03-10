@@ -12,4 +12,10 @@ export class DateService {
 
         return [rr, (mm > 9 ? "" : "0") + mm, (dd > 9 ? "" : "0") + dd].join(".");
     }
+
+    getFormattedDateTime() {
+        const hh = this.date.getHours();
+        const min = this.date.getMinutes();
+        return `${this.getFormattedDate()} ${(hh > 9 ? "" : "0") + hh}:${(min > 9 ? "" : "0") + min}`;
+    }
 }

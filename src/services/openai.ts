@@ -9,7 +9,7 @@ const Response = z.object({
 });
 
 export interface Message {
-    role: "system" | "user";
+    role: "system" | "user" | "assistant";
     content: string;
 }
 
@@ -66,7 +66,7 @@ export class OpenAi {
         }
     }
 
-    messageFactory(content: string, role: 'user' | 'system' = 'user'): Message {
+    messageFactory(content: string, role: 'user' | 'system' | 'assistant' = 'user'): Message {
         return {
             role,
             content,
