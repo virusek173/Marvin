@@ -49,19 +49,6 @@ src/
 3. Import and instantiate the service in `discord.ts`
 4. Add routing logic — either change the `MODEL` constant or add a new branch in the decider flow
 
-## Team Members
-
-| Name | Role in Marvin's context |
-|---|---|
-| Homar | Event planner — Marvin can mention him for scheduling |
-| Jacek | Highly motivated — doesn't need extra motivation |
-| Domin | Runner, family man |
-| Mariusz | Kubernetes expert |
-| Mason | Music and fitness expert |
-| Wiktor | The comedian |
-| Madzia | Artist, paints, raises kids |
-| Podsumowuś | Summarizes discussions on demand |
-
 ## Scripts
 
 ```bash

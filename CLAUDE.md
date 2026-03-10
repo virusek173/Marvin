@@ -23,14 +23,14 @@ npm test              # Jest tests
 | `MARVIN_USERNAME` | Bot's username — used to ignore its own messages |
 | `PERPLEXITY_KEY` | Perplexity API key (web search) |
 | `GROK_API` | Grok/X.ai API key |
-| `HOMAR_ID` | Discord ID of Homar — event planner |
-| `JACEK_ID` | Discord ID of Jacek — highly motivated member |
-| `DOMIN_ID` | Discord ID of Domin — runner with a family |
-| `MARIUSZ_ID` | Discord ID of Mariusz — Kubernetes expert |
-| `WIKTOR_ID` | Discord ID of Wiktor — comedian |
-| `MADZIA_ID` | Discord ID of Madzia — artist |
-| `MASON_ID` | Discord ID of Mason — music and fitness expert |
-| `PODSUMOWUS_ID` | Discord ID of Podsumowuś — summarizer bot |
+| `HOMAR_ID` | Discord ID of Homar |
+| `JACEK_ID` | Discord ID of Jacek |
+| `DOMIN_ID` | Discord ID of Domin |
+| `MARIUSZ_ID` | Discord ID of Mariusz |
+| `WIKTOR_ID` | Discord ID of Wiktor |
+| `MADZIA_ID` | Discord ID of Madzia |
+| `MASON_ID` | Discord ID of Mason |
+| `PODSUMOWUS_ID` | Discord ID of Podsumowuś |
 
 ## Architecture — Message Flow
 
