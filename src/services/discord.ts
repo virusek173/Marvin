@@ -56,6 +56,9 @@ const SPONTANEOUS_CHANCE = 0.02;
 const SPONTANEOUS_COOLDOWN_REPLY = "xD";
 const SPONTANEOUS_COOLDOWN = 30;
 let spontaneousCooldownCounter = 0;
+const botExchangeCounters = new Map<string, number>();
+const BOT_EXCHANGE_LIMIT = 2;
+const BOT_EXHAUSTED_REPLY = "Mam Cię dość. Nie pisz do mnie więcej.";
 
 /**
  * Main Discord bot service. Handles:
@@ -116,32 +119,39 @@ export class DiscordServce {
         });
 
         this.client.on("messageCreate", async (message: any) => {
-            if (message.author.username !== MARVIN_USERNAME) {
-                const userResponse = this.userResponseFactory(message)
-                const channelId = message?.channelId;
+            if (message.author.username === MARVIN_USERNAME) return;
 
-                contextService.pushWithLimit(userResponse, channelId);
+            const channelId = message?.channelId;
+            const userResponse = this.userResponseFactory(message);
+            contextService.pushWithLimit(userResponse, channelId);
 
-                if (spontaneousCooldownCounter > 0) {
-                    spontaneousCooldownCounter -= 1;
-                }
+            const isMentioned = message.content.includes(MARVIN_ID) ||
+                message.mentions?.repliedUser?.username === MARVIN_USERNAME;
 
-                const isMentioned = message.content.includes(MARVIN_ID) ||
-                    message.mentions?.repliedUser?.username === MARVIN_USERNAME;
-                const luckyRoll = !isMentioned && Math.random() < SPONTANEOUS_CHANCE;
+            if (message.author.bot) {
+                if (isMentioned) await this.handleBotMessage(message, contextService);
+                return;
+            }
 
-                if (luckyRoll && spontaneousCooldownCounter > 0) {
-                    message.channel.sendTyping();
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-                    message.reply(SPONTANEOUS_COOLDOWN_REPLY);
-                    contextService.pushWithLimit(this.marvinResponseFactory(SPONTANEOUS_COOLDOWN_REPLY), channelId);
-                    contextService.saveContextToFile("context.json");
-                } else if (luckyRoll) {
-                    spontaneousCooldownCounter = SPONTANEOUS_COOLDOWN;
-                    await this.handleSpontaneousMotivation(message, contextService);
-                } else if (isMentioned) {
-                    await this.handleMentioned(message, contextService);
-                }
+            botExchangeCounters.delete(channelId);
+
+            if (spontaneousCooldownCounter > 0) {
+                spontaneousCooldownCounter -= 1;
+            }
+
+            const luckyRoll = !isMentioned && Math.random() < SPONTANEOUS_CHANCE;
+
+            if (luckyRoll && spontaneousCooldownCounter > 0) {
+                message.channel.sendTyping();
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                message.reply(SPONTANEOUS_COOLDOWN_REPLY);
+                contextService.pushWithLimit(this.marvinResponseFactory(SPONTANEOUS_COOLDOWN_REPLY), channelId);
+                contextService.saveContextToFile("context.json");
+            } else if (luckyRoll) {
+                spontaneousCooldownCounter = SPONTANEOUS_COOLDOWN;
+                await this.handleSpontaneousMotivation(message, contextService);
+            } else if (isMentioned) {
+                await this.handleMentioned(message, contextService);
             }
         });
 
@@ -163,6 +173,23 @@ export class DiscordServce {
     marvinResponseFactory(content: string) {
         const timestamp = new DateService().getFormattedDateTime();
         return MODEL.messageFactory(`[${timestamp}] Marvin: ${content}`, 'assistant');
+    }
+
+    /** Handles a message from another bot. Responds up to BOT_EXCHANGE_LIMIT times per channel, then replies once with BOT_EXHAUSTED_REPLY and goes silent until a human resets the counter. */
+    async handleBotMessage(message: any, contextService: ContextService) {
+        const { channelId } = message;
+        const count = botExchangeCounters.get(channelId) ?? 0;
+        if (count >= BOT_EXCHANGE_LIMIT) return;
+
+        botExchangeCounters.set(channelId, count + 1);
+        if (count + 1 === BOT_EXCHANGE_LIMIT) {
+            message.reply(BOT_EXHAUSTED_REPLY);
+            contextService.pushWithLimit(this.marvinResponseFactory(BOT_EXHAUSTED_REPLY), channelId);
+            contextService.saveContextToFile("context.json");
+            return;
+        }
+
+        await this.handleMentioned(message, contextService);
     }
 
     /** Responds spontaneously (1% chance) to an unprompted message, motivating the sender based on context. */
