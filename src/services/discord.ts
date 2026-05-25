@@ -12,11 +12,12 @@ import { Grok } from "./grok.js";
 import {
     DECIDER_SYSTEM_PROMPT,
     getSpontaneousMotivationSystemPrompt,
+    getShortReactionSystemPrompt,
     getFirstMotivionUserMessagePrompt,
     getMarvinMotivationSystemPrompt,
     getPerplexityToMarvinResponsePrompt
 } from "../utils/prompts.js";
-import { FIRST_MESSAGE_MODEL_NAME, SPONTANEOUS_MODEL_NAME } from "../utils/consts.js";
+import { FIRST_MESSAGE_MODEL_NAME, SHORT_REACTION_MODEL_NAME, SPONTANEOUS_MODEL_NAME } from "../utils/consts.js";
 
 dotenv.config();
 const {
@@ -52,10 +53,12 @@ const grok = new Grok();
 const decider = new OpenAi();
 const perplexity = new Perplexity();
 const MODEL = openai;
-const SPONTANEOUS_CHANCE = 0.02;
-const SPONTANEOUS_COOLDOWN_REPLY = "xD";
-const SPONTANEOUS_COOLDOWN = 30;
+const SPONTANEOUS_CHANCE = 0.01;
+const SPONTANEOUS_COOLDOWN = 60;
 let spontaneousCooldownCounter = 0;
+const SHORT_REACTION_CHANCE = 0.02;
+const SHORT_REACTION_COOLDOWN = 30;
+let shortReactionCooldownCounter = 0;
 const botExchangeCounters = new Map<string, number>();
 const BOT_EXCHANGE_LIMIT = 2;
 const BOT_EXHAUSTED_REPLY = "Mam Cię dość. Nie pisz do mnie więcej.";
@@ -135,21 +138,18 @@ export class DiscordServce {
 
             botExchangeCounters.delete(channelId);
 
-            if (spontaneousCooldownCounter > 0) {
-                spontaneousCooldownCounter -= 1;
-            }
+            if (spontaneousCooldownCounter > 0) spontaneousCooldownCounter -= 1;
+            if (shortReactionCooldownCounter > 0) shortReactionCooldownCounter -= 1;
 
-            const luckyRoll = !isMentioned && Math.random() < SPONTANEOUS_CHANCE;
+            const fullMotivationRoll = !isMentioned && Math.random() < SPONTANEOUS_CHANCE;
+            const shortReactionRoll = !isMentioned && !fullMotivationRoll && Math.random() < SHORT_REACTION_CHANCE;
 
-            if (luckyRoll && spontaneousCooldownCounter > 0) {
-                message.channel.sendTyping();
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                message.reply(SPONTANEOUS_COOLDOWN_REPLY);
-                contextService.pushWithLimit(this.marvinResponseFactory(SPONTANEOUS_COOLDOWN_REPLY), channelId);
-                contextService.saveContextToFile("context.json");
-            } else if (luckyRoll) {
+            if (fullMotivationRoll && spontaneousCooldownCounter === 0) {
                 spontaneousCooldownCounter = SPONTANEOUS_COOLDOWN;
                 await this.handleSpontaneousMotivation(message, contextService);
+            } else if (shortReactionRoll && shortReactionCooldownCounter === 0) {
+                shortReactionCooldownCounter = SHORT_REACTION_COOLDOWN;
+                await this.handleShortReaction(message, contextService);
             } else if (isMentioned) {
                 await this.handleMentioned(message, contextService);
             }
@@ -202,6 +202,24 @@ export class DiscordServce {
                 MODEL.messageFactory(mess, 'system'),
                 ...contextService.getContext(message.channelId),
             ], SPONTANEOUS_MODEL_NAME);
+            if (response) {
+                contextService.pushWithLimit(this.marvinResponseFactory(response.content), message.channelId);
+                message.reply(response.content.substring(0, 1950));
+                contextService.saveContextToFile("context.json");
+            }
+        } catch (error: any) {
+            return exceptionHandler(error, message);
+        }
+    }
+
+    /** Responds with a short (≤4 word) AI-generated reaction based on the last message in context. */
+    async handleShortReaction(message: any, contextService: ContextService) {
+        try {
+            message.channel.sendTyping();
+            const response = await MODEL.contextInteract([
+                MODEL.messageFactory(getShortReactionSystemPrompt(), 'system'),
+                ...contextService.getContext(message.channelId),
+            ], SHORT_REACTION_MODEL_NAME);
             if (response) {
                 contextService.pushWithLimit(this.marvinResponseFactory(response.content), message.channelId);
                 message.reply(response.content.substring(0, 1950));
