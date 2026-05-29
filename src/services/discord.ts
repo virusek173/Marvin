@@ -267,6 +267,10 @@ export class DiscordServce {
 
             const urls = extractUrls(message.content);
             const scrapedParts = (await Promise.all(urls.map(scrapeUrl))).filter(Boolean) as string[];
+            if (scrapedParts.length > 0) {
+                message.reply(`Zaglądam do ${scrapedParts.length > 1 ? 'linków' : 'linka'}. 🔗`);
+                message.channel.sendTyping();
+            }
             const scrapedContext: Message[] = scrapedParts.length > 0
                 ? [MODEL.messageFactory(`Zawartość stron z wiadomości użytkownika:\n${scrapedParts.join('\n\n---\n\n')}`)]
                 : [];
