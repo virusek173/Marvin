@@ -14,8 +14,7 @@ export const DECIDER_SYSTEM_PROMPT = `Jesteś botem, który decyduje, który z d
     * Zapytanie wymaga dostępu do najnowszych informacji z internetu.
     * Zapytanie dotyczy prognoz, przewidywań, aktualności, wyników sportowych, itp.
     * Zapytanie dotyczy najnowszych/bieżących informacji.
-    * Zapytanie zawiera link do strony internetowej.
-    Wybierz MARVIN, jeśli zapytanie można rozwiązać bez przeszukiwania internetu.`
+    Wybierz MARVIN, jeśli zapytanie można rozwiązać bez przeszukiwania internetu, lub jeśli wiadomość zawiera link do strony.`
 
 /**
  * Wraps Perplexity's raw internet response for MODEL to rephrase in Marvin's voice.
