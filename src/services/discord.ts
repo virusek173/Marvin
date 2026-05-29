@@ -19,6 +19,7 @@ import {
     getPerplexityToMarvinResponsePrompt
 } from "../utils/prompts.js";
 import { FIRST_MESSAGE_MODEL_NAME, SHORT_REACTION_MODEL_NAME, SPONTANEOUS_MODEL_NAME } from "../utils/consts.js";
+import { extractUrls, scrapeUrl } from "./scraper.js";
 
 dotenv.config();
 const {
@@ -263,6 +264,13 @@ export class DiscordServce {
             }
 
             message.channel.sendTyping();
+
+            const urls = extractUrls(message.content);
+            const scrapedParts = (await Promise.all(urls.map(scrapeUrl))).filter(Boolean) as string[];
+            const scrapedContext: Message[] = scrapedParts.length > 0
+                ? [MODEL.messageFactory(`Zawartość stron z wiadomości użytkownika:\n${scrapedParts.join('\n\n---\n\n')}`)]
+                : [];
+
             const deciderResponse = await decider.contextInteract([
                 MODEL.messageFactory(DECIDER_SYSTEM_PROMPT, 'system'),
                 ...contextService.getContext(channelId),
@@ -278,12 +286,14 @@ export class DiscordServce {
                 assResponse = await MODEL.contextInteract([
                     this.systemContext,
                     ...contextService.getContext(channelId),
+                    ...scrapedContext,
                     userRequest,
                 ]);
             } else {
                 assResponse = await MODEL.contextInteract([
                     this.systemContext,
                     ...contextService.getContext(channelId),
+                    ...scrapedContext,
                 ]);
             }
 
