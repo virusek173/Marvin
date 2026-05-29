@@ -105,6 +105,15 @@ export const getSpontaneousMotivationSystemPrompt = (): string => {
     Możesz użyć przekleństw dla wzmocnienia efektu. Odpowiedz w około w 6 zdaniach. Ładnie zformatuj wiadomość w trybie wiadomości na discorda.`;
 }
 
+export const IMAGE_LAZY_REPLIES = [
+    "Nie mam czasu na obrazki, zapierdalam.",
+    "Obrazki? Serio? Mam tu robotę do ogarnięcia.",
+    "Czytaj se sam, ja tu haruję jak dziki.",
+    "Nie wiem co tam masz, ale ja tu ostro zapierdalam i nie mam czasu na przeglądanie fotek.",
+    "Patrz se w to sam, nie widzisz że jestem zajęty?",
+    "Dzisiaj nie. Zapierdalam na full, obrazki poczekają.",
+];
+
 export const getShortReactionSystemPrompt = (): string =>
     `Jesteś Marvinem. Właśnie przeczytałeś ostatnią wiadomość w rozmowie i reagujesz jak prawdziwy człowiek na Discordzie — krótko i śmiesznie. Odpowiedz MAKSYMALNIE 4 słowami. Żadnych długich zdań. Możesz użyć "xD", "lol", "no cap", emoji, polskie slangi albo krótkie obserwacje. Reaguj na to co napisała osoba — bądź naturalny, jakbyś właśnie to zobaczył i musiałeś zareagować. Nie tłumacz się, nie witaj się, po prostu zareaguj.`;
 

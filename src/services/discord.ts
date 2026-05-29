@@ -11,6 +11,7 @@ import { Perplexity } from "./perplexity.js";
 import { Grok } from "./grok.js";
 import {
     DECIDER_SYSTEM_PROMPT,
+    IMAGE_LAZY_REPLIES,
     getSpontaneousMotivationSystemPrompt,
     getShortReactionSystemPrompt,
     getFirstMotivionUserMessagePrompt,
@@ -251,6 +252,15 @@ export class DiscordServce {
         try {
             const { channelId } = message;
             let assResponse = null;
+
+            const hasImages = [...(message.attachments?.values() ?? [])].some(
+                (att: any) => att.contentType?.startsWith('image/')
+            );
+            if (hasImages && Math.random() < 0.25) {
+                const reply = IMAGE_LAZY_REPLIES[Math.floor(Math.random() * IMAGE_LAZY_REPLIES.length)];
+                message.reply(reply);
+                return;
+            }
 
             message.channel.sendTyping();
             const deciderResponse = await decider.contextInteract([
