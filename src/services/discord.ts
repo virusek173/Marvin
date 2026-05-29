@@ -3,7 +3,7 @@ import {
     exceptionHandler,
     mapGlobalNameNameToRealName,
 } from "../utils/helpers.js";
-import { Message, OpenAi } from "../services/openai.js";
+import { ContentPart, Message, OpenAi } from "../services/openai.js";
 import { DateService } from "./date.js";
 import { ClientService } from "./client.js";
 import { ContextService } from "./context.js";
@@ -166,8 +166,24 @@ export class DiscordServce {
     userResponseFactory(message: any) {
         const realName = mapGlobalNameNameToRealName[message.author.globalName];
         const timestamp = new DateService(message.createdAt).getFormattedDateTime();
-        const modifiedUserResponseContent = `[${timestamp}] ${realName}: ${message.content}`;
-        return MODEL.messageFactory(modifiedUserResponseContent)
+        const textContent = `[${timestamp}] ${realName}: ${message.content}`;
+
+        const imageAttachments = [...(message.attachments?.values() ?? [])].filter(
+            (att: any) => att.contentType?.startsWith('image/')
+        );
+
+        if (imageAttachments.length > 0) {
+            const parts: ContentPart[] = [
+                { type: "text", text: textContent },
+                ...imageAttachments.map((att: any) => ({
+                    type: "image_url" as const,
+                    image_url: { url: att.url },
+                })),
+            ];
+            return MODEL.messageFactory(parts);
+        }
+
+        return MODEL.messageFactory(textContent);
     }
 
     marvinResponseFactory(content: string) {

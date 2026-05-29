@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 import OpenAI from "openai";
 import { z } from "zod";
 import { zodResponseFormat } from "openai/helpers/zod";
+import { Message } from "./openai.js";
 
 dotenv.config();
 const { PERPLEXITY_KEY } = process.env;
@@ -12,14 +13,22 @@ const Response = z.object({
     answer: z.string(),
 });
 
-interface Message {
+function flattenContent(content: Message["content"]): string {
+    if (typeof content === "string") return content;
+    return content
+        .filter((part) => part.type === "text")
+        .map((part) => (part as { type: "text"; text: string }).text)
+        .join(" ");
+}
+
+interface TextMessage {
     role: "system" | "user" | "assistant";
     content: string;
 }
 
 export class Perplexity {
     private perplexity: OpenAI;
-    private systemContext: Message;
+    private systemContext: TextMessage;
 
     constructor(systemPrompt?: string) {
         this.perplexity = new OpenAI({
@@ -35,7 +44,7 @@ export class Perplexity {
 
     async interact(userPrompt: string, model: string = "sonar", chainOfToughts: boolean = false): Promise<any> {
         try {
-            const userContext: Message = {
+            const userContext: TextMessage = {
                 role: "user",
                 content: userPrompt,
             };
@@ -60,23 +69,24 @@ export class Perplexity {
         }
     }
 
-    getMappedContext(context: Array<Message>): Array<Message> {
+    getMappedContext(context: Array<Message>): Array<TextMessage> {
         return [...context].reduce((acc, message) => {
+            const textContent = flattenContent(message.content);
             if (acc.length === 0) {
-                acc.push(message);
-                return acc
+                acc.push({ role: message.role, content: textContent });
+                return acc;
             }
 
             const lastAdded = acc[acc.length - 1];
 
             if (lastAdded.role === message.role) {
-                acc[acc.length - 1].content += `\n${message.content}`;
+                acc[acc.length - 1].content += `\n${textContent}`;
             } else {
-                acc.push(message);
+                acc.push({ role: message.role, content: textContent });
             }
-            return acc
+            return acc;
 
-        }, [] as Array<Message>);
+        }, [] as Array<TextMessage>);
     }
 
     async contextInteract(context: Array<Message>, model: string = "sonar", chainOfToughts: boolean = false): Promise<any> {

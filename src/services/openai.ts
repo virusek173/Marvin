@@ -8,9 +8,13 @@ const Response = z.object({
     answer: z.string(),
 });
 
+export type ContentPart =
+    | { type: "text"; text: string }
+    | { type: "image_url"; image_url: { url: string } };
+
 export interface Message {
     role: "system" | "user" | "assistant";
-    content: string;
+    content: string | ContentPart[];
 }
 
 export class OpenAi {
@@ -36,7 +40,7 @@ export class OpenAi {
             ]
             const completion = await this.openai.chat.completions.create({
                 model,
-                messages: context,
+                messages: context as any,
                 max_completion_tokens: 2500,
                 ...(chainOfToughts ? { response_format: zodResponseFormat(Response, "response") } : null),
             });
@@ -53,7 +57,7 @@ export class OpenAi {
             console.log(">>>>>>>> context <<<<<<<<", model, context, context.length);
             const completion = await this.openai.chat.completions.create({
                 model,
-                messages: context,
+                messages: context as any,
                 max_completion_tokens: 2500,
                 ...(chainOfToughts ? { response_format: zodResponseFormat(Response, "response") } : null),
             });
@@ -66,11 +70,8 @@ export class OpenAi {
         }
     }
 
-    messageFactory(content: string, role: 'user' | 'system' | 'assistant' = 'user'): Message {
-        return {
-            role,
-            content,
-        }
+    messageFactory(content: string | ContentPart[], role: 'user' | 'system' | 'assistant' = 'user'): Message {
+        return { role, content };
     }
 
     getDefaultModelName(): string {
