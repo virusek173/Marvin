@@ -108,7 +108,7 @@ export class DiscordServce {
                 const firstUserMessage = MODEL.messageFactory(getFirstMotivionUserMessagePrompt(quote));
 
                 if (!withInitMessage) {
-                    channel.send(`Nie było mnie, ale wstałem z... Dockera. Działam na modelu: ${MODEL.getDefaultModelName()}. Teraz widzę obrazki i czytam strony z linków.`);
+                    channel.send(`Nie było mnie, ale wstałem z... Dockera. Działam na modelu: ${MODEL.getDefaultModelName()}. Teraz widzę obrazki i czytam strony z linków. Ogarnięte w Claude Code w 15 min.`);
 
                     return;
                 }
@@ -265,7 +265,11 @@ export class DiscordServce {
 
             message.channel.sendTyping();
 
-            const urls = extractUrls(message.content);
+            const currentUrls = extractUrls(message.content);
+            const historyUrls = contextService.getContext(channelId).flatMap(msg =>
+                typeof msg.content === 'string' ? extractUrls(msg.content) : []
+            );
+            const urls = [...new Set([...currentUrls, ...historyUrls])].slice(0, 5);
             const scrapedParts = (await Promise.all(urls.map(scrapeUrl))).filter(Boolean) as string[];
             if (scrapedParts.length > 0) {
                 message.reply(`Zaglądam do ${scrapedParts.length > 1 ? 'linków' : 'linka'}. 🔗`);
