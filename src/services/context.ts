@@ -1,4 +1,4 @@
-import { Message } from "./openai";
+import { Message, ContentPart } from "./openai";
 import * as fs from "fs";
 
 type Messages = Array<Message>;
@@ -80,11 +80,24 @@ export class ContextService {
         }
     };
 
+    private sanitizeForPersistence(message: Message): Message {
+        if (!Array.isArray(message.content)) return message;
+        const parts = message.content as ContentPart[];
+        const textParts = parts.filter(p => p.type === 'text').map(p => (p as any).text as string);
+        const imageCount = parts.filter(p => p.type === 'image_url').length;
+        const imageNote = imageCount > 0 ? (imageCount > 1 ? ` [${imageCount} obrazy]` : ' [obraz]') : '';
+        return { ...message, content: textParts.join(' ') + imageNote };
+    }
+
     saveContextToFile = (
         fileName: string,
     ): void => {
         try {
-            const contextJson = JSON.stringify(this.contextMap, null, 2);
+            const sanitized: Record<string, Message[]> = {};
+            for (const [channelId, messages] of Object.entries(this.contextMap)) {
+                sanitized[channelId] = messages.map(m => this.sanitizeForPersistence(m));
+            }
+            const contextJson = JSON.stringify(sanitized, null, 2);
             fs.writeFileSync(fileName, contextJson);
         } catch (error) {
             console.error("Error writing context file:", error);

@@ -1,4 +1,5 @@
 import { QUOTE_PROMPT } from "./prompts.js";
+import { Message } from "../services/openai.js";
 
 /** Proxy handler that returns the property value, the property name, or empty string as fallback. */
 export const proxyHandler = {
@@ -37,6 +38,16 @@ export const mapGlobalNameNameToRealName = new Proxy(
  * Handles errors from AI service calls by logging and replying to the Discord message.
  * Safe to call when `message` is either a Discord Message or a Channel object.
  */
+/** Strips image_url content parts from context messages — Discord CDN URLs are not accessible by OpenAI servers. */
+export const stripImages = (context: Message[]): Message[] =>
+  context.map(msg => {
+    if (!Array.isArray(msg.content)) return msg;
+    const textParts = (msg.content as any[]).filter(p => p.type === 'text').map(p => p.text as string);
+    const imageCount = (msg.content as any[]).filter(p => p.type === 'image_url').length;
+    const imageNote = imageCount > 0 ? (imageCount > 1 ? ` [${imageCount} obrazy]` : ' [obraz]') : '';
+    return { ...msg, content: textParts.join(' ') + imageNote };
+  });
+
 export const exceptionHandler = (error: any, message: any) => {
   console.log("err: ", error?.message);
 

@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 import {
     exceptionHandler,
     mapGlobalNameNameToRealName,
+    stripImages,
 } from "../utils/helpers.js";
 import { ContentPart, Message, OpenAi } from "../services/openai.js";
 import { DateService } from "./date.js";
@@ -218,7 +219,7 @@ export class DiscordServce {
             console.log('mess: ', mess)
             const response = await MODEL.contextInteract([
                 MODEL.messageFactory(mess, 'system'),
-                ...contextService.getContext(message.channelId),
+                ...stripImages(contextService.getContext(message.channelId)),
             ], SPONTANEOUS_MODEL_NAME);
             if (response) {
                 contextService.pushWithLimit(this.marvinResponseFactory(response.content), message.channelId);
@@ -236,7 +237,7 @@ export class DiscordServce {
             message.channel.sendTyping();
             const response = await MODEL.contextInteract([
                 MODEL.messageFactory(getShortReactionSystemPrompt(), 'system'),
-                ...contextService.getContext(message.channelId),
+                ...stripImages(contextService.getContext(message.channelId)),
             ], SHORT_REACTION_MODEL_NAME);
             if (response) {
                 contextService.pushWithLimit(this.marvinResponseFactory(response.content), message.channelId);
@@ -281,26 +282,26 @@ export class DiscordServce {
 
             const deciderResponse = await decider.contextInteract([
                 MODEL.messageFactory(DECIDER_SYSTEM_PROMPT, 'system'),
-                ...contextService.getContext(channelId),
+                ...stripImages(contextService.getContext(channelId)),
             ]);
 
             if (deciderResponse.content.includes('PERPLEXITY')) {
                 message.reply(`To pytanie mnie przerosło. \nZaglądam do Internetu. 🌐`);
-                const { message: perplexityResponse } = await perplexity.contextInteract(contextService.getContext(channelId));
+                const { message: perplexityResponse } = await perplexity.contextInteract(stripImages(contextService.getContext(channelId)));
                 console.log(`perplexityResponse: ${perplexityResponse.content}`);
                 message.channel.sendTyping();
 
                 const userRequest = MODEL.messageFactory(getPerplexityToMarvinResponsePrompt(perplexityResponse.content));
                 assResponse = await MODEL.contextInteract([
                     this.systemContext,
-                    ...contextService.getContext(channelId),
+                    ...stripImages(contextService.getContext(channelId)),
                     ...scrapedContext,
                     userRequest,
                 ]);
             } else {
                 assResponse = await MODEL.contextInteract([
                     this.systemContext,
-                    ...contextService.getContext(channelId),
+                    ...stripImages(contextService.getContext(channelId)),
                     ...scrapedContext,
                 ]);
             }
