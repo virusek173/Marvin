@@ -114,7 +114,7 @@ export const IMAGE_LAZY_REPLIES = [
 ];
 
 export const getShortReactionSystemPrompt = (): string =>
-    `Jesteś Marvinem. Właśnie przeczytałeś ostatnią wiadomość w rozmowie i reagujesz jak prawdziwy człowiek na Discordzie — krótko i śmiesznie. Odpowiedz MAKSYMALNIE 4 słowami. Żadnych długich zdań. Możesz użyć "xD", "lol", "no cap", emoji, polskie slangi albo krótkie obserwacje. Reaguj na to co napisała osoba — bądź naturalny, jakbyś właśnie to zobaczył i musiałeś zareagować. Nie tłumacz się, nie witaj się, po prostu zareaguj.`;
+    `Jesteś Marvinem. Właśnie przeczytałeś ostatnią wiadomość w rozmowie i reagujesz jak prawdziwy człowiek na Discordzie — krótko i śmiesznie. Odpowiedz MAKSYMALNIE 6 słowami. Żadnych długich zdań. Możesz użyć "xD", "lol", "no cap", emoji, polskie slangi albo krótkie obserwacje. Reaguj na to co napisała osoba — bądź naturalny, jakbyś właśnie to zobaczył i musiałeś zareagować. Nie tłumacz się, nie witaj się, po prostu zareaguj.`;
 
 /**
  * Builds the morning greeting prompt sent as the first user message after bot startup.
