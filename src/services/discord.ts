@@ -4,7 +4,7 @@ import {
     mapGlobalNameNameToRealName,
     stripImages,
 } from "../utils/helpers.js";
-import { ContentPart, Message, OpenAi } from "../services/openai.js";
+import { Message, OpenAi } from "../services/openai.js";
 import { DateService } from "./date.js";
 import { ClientService } from "./client.js";
 import { ContextService } from "./context.js";
@@ -128,7 +128,7 @@ export class DiscordServce {
             if (message.author.username === MARVIN_USERNAME) return;
 
             const channelId = message?.channelId;
-            const userResponse = this.userResponseFactory(message);
+            const userResponse = await this.userResponseFactory(message);
             contextService.pushWithLimit(userResponse, channelId);
 
             const isMentioned = message.content.includes(MARVIN_ID) ||
@@ -166,7 +166,7 @@ export class DiscordServce {
      * Prepends the sender's real name (from mapGlobalNameNameToRealName) to the content.
      * Example: "zoltymason: hej co słychać" → {role: 'user', content: 'Mason: hej co słychać'}
      */
-    userResponseFactory(message: any) {
+    async userResponseFactory(message: any) {
         const realName = mapGlobalNameNameToRealName[message.author.globalName];
         const timestamp = new DateService(message.createdAt).getFormattedDateTime();
         const textContent = `[${timestamp}] ${realName}: ${message.content}`;
@@ -176,14 +176,13 @@ export class DiscordServce {
         );
 
         if (imageAttachments.length > 0) {
-            const parts: ContentPart[] = [
-                { type: "text", text: textContent },
-                ...imageAttachments.map((att: any) => ({
-                    type: "image_url" as const,
-                    image_url: { url: att.url },
-                })),
-            ];
-            return MODEL.messageFactory(parts);
+            const descriptions = await Promise.all(
+                imageAttachments.map((att: any) => MODEL.describeImage(att.url))
+            );
+            const imageText = descriptions.map((desc, i) =>
+                imageAttachments.length > 1 ? `[Obraz ${i + 1}: ${desc}]` : `[Obraz: ${desc}]`
+            ).join(' ');
+            return MODEL.messageFactory(`${textContent} ${imageText}`);
         }
 
         return MODEL.messageFactory(textContent);

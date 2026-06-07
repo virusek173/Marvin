@@ -70,6 +70,25 @@ export class OpenAi {
         }
     }
 
+    async describeImage(url: string): Promise<string> {
+        try {
+            const completion = await this.openai.chat.completions.create({
+                model: DEFAULT_MODEL_NAME,
+                messages: [{
+                    role: 'user',
+                    content: [
+                        { type: 'image_url', image_url: { url } },
+                        { type: 'text', text: 'Opisz krótko co widzisz na tym obrazku (max 2 zdania, po polsku).' },
+                    ],
+                }] as any,
+                max_completion_tokens: 300,
+            });
+            return completion.choices[0].message.content ?? '[nie udało się opisać obrazka]';
+        } catch {
+            return '[nie udało się opisać obrazka]';
+        }
+    }
+
     messageFactory(content: string | ContentPart[], role: 'user' | 'system' | 'assistant' = 'user'): Message {
         return { role, content };
     }
