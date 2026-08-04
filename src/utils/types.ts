@@ -28,6 +28,8 @@ export interface PeopleMap {
     MadziaId: DiscordId;
     MasonId: DiscordId;
     PodsumowusId: DiscordId;
+    MugdaId: DiscordId;
+    WibotId: DiscordId;
 }
 
 /**

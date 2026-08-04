@@ -4,6 +4,8 @@
 
 Marvin is a Discord bot that sends a motivational quote every day at 6:00 AM (Warsaw timezone) and responds to user messages throughout the day. It uses multiple AI models — OpenAI (GPT-5) as the primary, Grok as an alternative, and Perplexity for questions that require internet access.
 
+The server also has two other bots with their own personas: [Mugda](#mugda) and [Wibot](#wibot) — see below.
+
 ## Commands
 
 ```bash
@@ -31,6 +33,20 @@ npm test              # Jest tests
 | `MADZIA_ID` | Discord ID of Madzia |
 | `MASON_ID` | Discord ID of Mason |
 | `PODSUMOWUS_ID` | Discord ID of Podsumowuś |
+| `MUGDA_ID` | Discord ID of the Mugda bot |
+| `WIBOT_ID` | Discord ID of the Wibot bot |
+
+## Other Bots on the Server
+
+Marvin shares the Discord server with two other bots, each with a distinct persona.
+
+### Mugda
+
+A girl-persona bot. During the day she "does" laundry, drinks coffee, plays Baldur's Gate, and goes to the gym. She replies sarcastically and is a bit snarky/biting in tone. She can generate images — if asked to "zrób zdjęcie" (take a photo), e.g. of whatever she's currently up to, she produces one.
+
+### Wibot
+
+Informs about "niedziela handlowa" (trading/non-trading Sundays in Poland — days when retail is open or closed by law) and current interest rates. Not great with the calendar, but does its best.
 
 ## Architecture — Message Flow
 

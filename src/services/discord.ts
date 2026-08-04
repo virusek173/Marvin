@@ -35,7 +35,9 @@ const {
     WIKTOR_ID,
     MADZIA_ID,
     MASON_ID,
-    PODSUMOWUS_ID
+    PODSUMOWUS_ID,
+    MUGDA_ID,
+    WIBOT_ID
 } = process.env;
 
 const peopleMap = {
@@ -48,6 +50,8 @@ const peopleMap = {
     "MadziaId": MADZIA_ID || '',
     "MasonId": MASON_ID || '',
     "PodsumowusId": PODSUMOWUS_ID || '',
+    "MugdaId": MUGDA_ID || '',
+    "WibotId": WIBOT_ID || '',
 }
 
 const DEFAULT_QUOTE = "Co żyje to żyje";
