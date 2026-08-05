@@ -111,6 +111,12 @@ export const getSpontaneousMotivationSystemPrompt = (): string => {
     Możesz użyć przekleństw dla wzmocnienia efektu. Odpowiedz w około w 6 zdaniach. Ładnie zformatuj wiadomość w trybie wiadomości na discorda.`;
 }
 
+/**
+ * System prompt for the message Marvin sends right after a (silent) restart.
+ * MODEL generates this instead of a hardcoded string; the model name is appended separately.
+ */
+export const WAKE_UP_MESSAGE_PROMPT = `Jesteś Marvinem. Właśnie wystartowałeś ponownie (restart/deploy). Napisz krótką, luźną wiadomość na Discorda o tym, że wróciłeś. Możesz nawiązać do tego, że wstałeś "z Dockera". Nie pisz na jakim modelu działasz — to zostanie dopisane osobno. Maksymalnie 2-3 zdania.`;
+
 export const IMAGE_LAZY_REPLIES = [
     "Nie mam czasu na obrazki, zapierdalam.",
     "Obrazki? Serio? Mam tu robotę do ogarnięcia.",

@@ -17,9 +17,10 @@ import {
     getShortReactionSystemPrompt,
     getFirstMotivionUserMessagePrompt,
     getMarvinMotivationSystemPrompt,
-    getPerplexityToMarvinResponsePrompt
+    getPerplexityToMarvinResponsePrompt,
+    WAKE_UP_MESSAGE_PROMPT
 } from "../utils/prompts.js";
-import { FIRST_MESSAGE_MODEL_NAME, SHORT_REACTION_MODEL_NAME, SPONTANEOUS_MODEL_NAME } from "../utils/consts.js";
+import { DECIDER_MODEL_NAME, FIRST_MESSAGE_MODEL_NAME, SHORT_REACTION_MODEL_NAME, SPONTANEOUS_MODEL_NAME } from "../utils/consts.js";
 import { extractUrls, scrapeUrl } from "./scraper.js";
 
 dotenv.config();
@@ -60,7 +61,7 @@ const grok = new Grok();
 const decider = new OpenAi();
 const perplexity = new Perplexity();
 const MODEL = openai;
-const SPONTANEOUS_CHANCE = 0.005;
+const SPONTANEOUS_CHANCE = 0.01;
 const SPONTANEOUS_COOLDOWN = 60;
 let spontaneousCooldownCounter = 0;
 const SHORT_REACTION_CHANCE = 0.02;
@@ -113,7 +114,8 @@ export class DiscordServce {
                 const firstUserMessage = MODEL.messageFactory(getFirstMotivionUserMessagePrompt(quote));
 
                 if (!withInitMessage) {
-                    channel.send(`Nie było mnie, ale wstałem z... Dockera. Działam na modelu: ${MODEL.getDefaultModelName()}. Teraz widzę obrazki i czytam strony z linków. Ogarnięte w Claude Code w 15 min.`);
+                    const wakeUpMessage = await MODEL.interact(WAKE_UP_MESSAGE_PROMPT);
+                    channel.send(`${wakeUpMessage?.content ?? "Wstałem."}\n\nDziałam na modelu: ${MODEL.getDefaultModelName()}.`);
 
                     return;
                 }
@@ -286,7 +288,7 @@ export class DiscordServce {
             const deciderResponse = await decider.contextInteract([
                 MODEL.messageFactory(DECIDER_SYSTEM_PROMPT, 'system'),
                 ...stripImages(contextService.getContext(channelId)),
-            ]);
+            ], DECIDER_MODEL_NAME);
 
             if (deciderResponse.content.includes('PERPLEXITY')) {
                 message.reply(`To pytanie mnie przerosło. \nZaglądam do Internetu. 🌐`);
