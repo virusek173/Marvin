@@ -3,6 +3,7 @@ import {
     exceptionHandler,
     mapGlobalNameNameToRealName,
     stripImages,
+    stripLeadingTimestampPrefix,
 } from "../utils/helpers.js";
 import { Message, OpenAi } from "../services/openai.js";
 import { DateService } from "./date.js";
@@ -115,7 +116,7 @@ export class DiscordServce {
 
                 if (!withInitMessage) {
                     const wakeUpMessage = await MODEL.interact(WAKE_UP_MESSAGE_PROMPT);
-                    channel.send(`${wakeUpMessage?.content ?? "Wstałem."}\n\nDziałam na modelu: ${MODEL.getDefaultModelName()}.`);
+                    channel.send(wakeUpMessage?.content ?? "Wstałem.");
 
                     return;
                 }
@@ -227,8 +228,9 @@ export class DiscordServce {
                 ...stripImages(contextService.getContext(message.channelId)),
             ], SPONTANEOUS_MODEL_NAME);
             if (response) {
-                contextService.pushWithLimit(this.marvinResponseFactory(response.content), message.channelId);
-                message.reply(response.content.substring(0, 1950));
+                const content = stripLeadingTimestampPrefix(response.content);
+                contextService.pushWithLimit(this.marvinResponseFactory(content), message.channelId);
+                message.reply(content.substring(0, 1950));
                 contextService.saveContextToFile("context.json");
             }
         } catch (error: any) {
@@ -245,8 +247,9 @@ export class DiscordServce {
                 ...stripImages(contextService.getContext(message.channelId)),
             ], SHORT_REACTION_MODEL_NAME);
             if (response) {
-                contextService.pushWithLimit(this.marvinResponseFactory(response.content), message.channelId);
-                message.reply(response.content.substring(0, 1950));
+                const content = stripLeadingTimestampPrefix(response.content);
+                contextService.pushWithLimit(this.marvinResponseFactory(content), message.channelId);
+                message.reply(content.substring(0, 1950));
                 contextService.saveContextToFile("context.json");
             }
         } catch (error: any) {
@@ -311,8 +314,11 @@ export class DiscordServce {
                 ]);
             }
 
-            assResponse && contextService.pushWithLimit(this.marvinResponseFactory(assResponse.content), channelId);
-            message.reply(assResponse.content.substring(0, 1950));
+            if (assResponse) {
+                const content = stripLeadingTimestampPrefix(assResponse.content);
+                contextService.pushWithLimit(this.marvinResponseFactory(content), channelId);
+                message.reply(content.substring(0, 1950));
+            }
             contextService.saveContextToFile("context.json");
         } catch (error: any) {
             return exceptionHandler(error, message);

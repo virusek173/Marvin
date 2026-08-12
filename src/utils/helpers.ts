@@ -48,6 +48,15 @@ export const stripImages = (context: Message[]): Message[] =>
     return { ...msg, content: textParts.join(' ') + imageNote };
   });
 
+/**
+ * Strips a leading "[YYYY.MM.DD HH:MM] Name: " prefix from a model response.
+ * Context messages are stored with this prefix so the model has time/sender
+ * awareness, but the model sometimes imitates the pattern and echoes it back
+ * at the start of its own reply — this removes it before the text reaches Discord.
+ */
+export const stripLeadingTimestampPrefix = (content: string): string =>
+  content.replace(/^\s*\[\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}\]\s*[^\]\n:]+:\s*/, "");
+
 export const exceptionHandler = (error: any, message: any) => {
   console.log("err: ", error?.message);
 
