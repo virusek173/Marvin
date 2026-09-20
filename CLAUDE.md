@@ -8,9 +8,9 @@ The server also has two other bots with their own personas: [Mugda](#mugda) and 
 
 ## Git Workflow
 
-After every change to this repo, commit and push automatically — do not stop to ask for confirmation first.
+After every change to this repo, do NOT commit and push automatically. Instead, ask the user whether to commit and push now, and wait for their confirmation before doing so.
 
-After every change, also restart the bot automatically so it runs the new code: `docker compose up --build -d`. Do this without waiting for confirmation, same as the commit/push.
+After every change, restart the bot automatically so it runs the new code: `docker compose up --build -d`. Do this without waiting for confirmation.
 
 ## Commands
 
