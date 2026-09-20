@@ -11,6 +11,7 @@ const quotesArray: string[] = [];
 const openai = new OpenAi();
 const croneMap = {
   EVERY_DAY_SIX_AM: "0 6 * * *",
+  EVERY_DAY_EIGHT_PM: "0 20 * * *",
   EVERY_MINUTE: "* * * * *",
 };
 const croneOptions = {
@@ -18,8 +19,10 @@ const croneOptions = {
 };
 const WITH_INIT_MESSAGE = false;
 const WITH_CRON = process.env.WITH_CRON !== "false";
+const SERVER_SUMMARY_INTERVAL_DAYS = 3;
 
 let client: any = null;
+let daysSinceServerSummary = 0;
 
 const init = async (withInitMessage: boolean | undefined = true) => {
   try {
@@ -43,3 +46,12 @@ if (WITH_CRON) {
 } else {
   console.log("Cron wyłączony (WITH_CRON=false).");
 }
+
+console.log(`Uruchamiam podsumowanie serwera co ${SERVER_SUMMARY_INTERVAL_DAYS} dni.`);
+cron.schedule(croneMap.EVERY_DAY_EIGHT_PM, () => {
+  daysSinceServerSummary += 1;
+  if (daysSinceServerSummary >= SERVER_SUMMARY_INTERVAL_DAYS) {
+    daysSinceServerSummary = 0;
+    client?.sendServerSummary();
+  }
+}, croneOptions);

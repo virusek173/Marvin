@@ -6,6 +6,10 @@ Marvin is a Discord bot that sends a motivational quote every day at 6:00 AM (Wa
 
 The server also has two other bots with their own personas: [Mugda](#mugda) and [Wibot](#wibot) — see below.
 
+## Git Workflow
+
+After every change to this repo, commit and push automatically — do not stop to ask for confirmation first.
+
 ## Commands
 
 ```bash
@@ -21,6 +25,7 @@ npm test              # Jest tests
 |---|---|
 | `DISCORD_CLIENT_TOKEN` | Discord bot token (from Discord Developer Portal) |
 | `CHANNEL_ID` | Channel ID where the bot sends morning quotes |
+| `BOTS_CHANNEL_ID` | Channel ID (bots conversation channel) where the periodic server summary is posted |
 | `MARVIN_ID` | Bot's Discord user ID — used to detect mentions |
 | `MARVIN_USERNAME` | Bot's username — used to ignore its own messages |
 | `PERPLEXITY_KEY` | Perplexity API key (web search) |
@@ -82,6 +87,17 @@ Informs about "niedziela handlowa" (trading/non-trading Sundays in Poland — da
                             message.reply(response)
                                     ↓
                             contextService.saveContextToFile("context.json")
+
+
+[node-cron 20:00 Warsaw, every SERVER_SUMMARY_INTERVAL_DAYS days]
+        ↓
+    index.ts → client.sendServerSummary()
+        ↓
+    flatten contextService's full contextMap (all channels) → combinedText
+        ↓
+    MODEL.contextInteract([getServerSummarySystemPrompt(), combinedText])
+        ↓
+    channel(BOTS_CHANNEL_ID).send(digest)  ← runs independently of WITH_CRON
 ```
 
 ## Key Files
@@ -109,6 +125,8 @@ Informs about "niedziela handlowa" (trading/non-trading Sundays in Poland — da
 
 - **Context limit:** `ContextService.pushWithLimit` stores max **30 messages** per channel (FIFO). Changing this affects memory and API cost.
 - **Quote deduplication:** `quotesArray` keeps max 10 previous quotes to prevent repetition.
+- **Spontaneous chat features (`discord.ts`):** on every non-mentioned message there's a `SHORT_REACTION_CHANCE` (1%) roll for a short AI reaction, cooldown-gated by `SHORT_REACTION_COOLDOWN` (30 messages). There is no more per-message chance for a long spontaneous reply — that feature was replaced by the periodic server summary below.
+- **Periodic server summary (`sendServerSummary`):** every `SERVER_SUMMARY_INTERVAL_DAYS` days (default 3) at 20:00 Warsaw time, a cron in `index.ts` calls `client.sendServerSummary()`, which digests recent messages from every tracked channel and posts the result to the channel configured via `BOTS_CHANNEL_ID` in `.env`. This cron is scheduled unconditionally, independent of `WITH_CRON` (which only gates the daily 6 AM quote).
 - **`MODEL` is a constant** in `discord.ts` pointing to the `openai` instance. To switch the main model, change the `MODEL` object or the value in `consts.ts`.
 - **`decider`** uses a separate `OpenAi` instance (not Grok) — its model can be changed independently.
 - **`context.json`** — conversation history file. Loaded on startup, saved after every bot reply. Delete it to reset Marvin's memory.

@@ -14,20 +14,21 @@ import { Grok } from "./grok.js";
 import {
     DECIDER_SYSTEM_PROMPT,
     IMAGE_LAZY_REPLIES,
-    getSpontaneousMotivationSystemPrompt,
+    getServerSummarySystemPrompt,
     getShortReactionSystemPrompt,
     getFirstMotivionUserMessagePrompt,
     getMarvinMotivationSystemPrompt,
     getPerplexityToMarvinResponsePrompt,
     WAKE_UP_MESSAGE_PROMPT
 } from "../utils/prompts.js";
-import { DECIDER_MODEL_NAME, FIRST_MESSAGE_MODEL_NAME, SHORT_REACTION_MODEL_NAME, SPONTANEOUS_MODEL_NAME } from "../utils/consts.js";
+import { DECIDER_MODEL_NAME, FIRST_MESSAGE_MODEL_NAME, SHORT_REACTION_MODEL_NAME, SERVER_SUMMARY_MODEL_NAME } from "../utils/consts.js";
 import { extractUrls, scrapeUrl } from "./scraper.js";
 
 dotenv.config();
 const {
     DISCORD_CLIENT_TOKEN,
     CHANNEL_ID,
+    BOTS_CHANNEL_ID,
     MARVIN_ID,
     MARVIN_USERNAME,
     HOMAR_ID,
@@ -62,10 +63,7 @@ const grok = new Grok();
 const decider = new OpenAi();
 const perplexity = new Perplexity();
 const MODEL = openai;
-const SPONTANEOUS_CHANCE = 0.01;
-const SPONTANEOUS_COOLDOWN = 60;
-let spontaneousCooldownCounter = 0;
-const SHORT_REACTION_CHANCE = 0.02;
+const SHORT_REACTION_CHANCE = 0.01;
 const SHORT_REACTION_COOLDOWN = 30;
 let shortReactionCooldownCounter = 0;
 const botExchangeCounters = new Map<string, number>();
@@ -88,6 +86,7 @@ export class DiscordServce {
     private client: any;
     private date: string;
     private systemContext: Message;
+    private contextService: ContextService;
     /**
      * @param _quote - Motivational quote for today's greeting message
      * @param withInitMessage - If false, bot starts silently (no morning message). Default: true.
@@ -95,6 +94,7 @@ export class DiscordServce {
     constructor(_quote: string | undefined,
         withInitMessage: boolean = true) {
         const contextService = new ContextService({})
+        this.contextService = contextService;
 
         const clientService = new ClientService();
         this.client = clientService.getClient();
@@ -148,16 +148,11 @@ export class DiscordServce {
 
             botExchangeCounters.delete(channelId);
 
-            if (spontaneousCooldownCounter > 0) spontaneousCooldownCounter -= 1;
             if (shortReactionCooldownCounter > 0) shortReactionCooldownCounter -= 1;
 
-            const fullMotivationRoll = !isMentioned && Math.random() < SPONTANEOUS_CHANCE;
-            const shortReactionRoll = !isMentioned && !fullMotivationRoll && Math.random() < SHORT_REACTION_CHANCE;
+            const shortReactionRoll = !isMentioned && Math.random() < SHORT_REACTION_CHANCE;
 
-            if (fullMotivationRoll && spontaneousCooldownCounter === 0) {
-                spontaneousCooldownCounter = SPONTANEOUS_COOLDOWN;
-                await this.handleSpontaneousMotivation(message, contextService);
-            } else if (shortReactionRoll && shortReactionCooldownCounter === 0) {
+            if (shortReactionRoll && shortReactionCooldownCounter === 0) {
                 shortReactionCooldownCounter = SHORT_REACTION_COOLDOWN;
                 await this.handleShortReaction(message, contextService);
             } else if (isMentioned) {
@@ -217,24 +212,34 @@ export class DiscordServce {
         await this.handleMentioned(message, contextService);
     }
 
-    /** Responds spontaneously (1% chance) to an unprompted message, motivating the sender based on context. */
-    async handleSpontaneousMotivation(message: any, contextService: ContextService) {
+    /** Posts a digest of recent activity across all tracked channels to the bots channel. Triggered on a cron schedule (see index.ts), not by individual messages. */
+    async sendServerSummary() {
+        const channel = this.client.channels.cache.get(BOTS_CHANNEL_ID);
+        if (!channel) return;
+
         try {
-            message.channel.sendTyping();
-            const mess = getSpontaneousMotivationSystemPrompt()
-            console.log('mess: ', mess)
+            const combinedText = Object.values(this.contextService.getContextMap())
+                .flatMap(messages => stripImages(messages))
+                .map(m => (typeof m.content === 'string' ? m.content : ''))
+                .filter(Boolean)
+                .join('\n');
+
+            if (!combinedText) return;
+
+            channel.sendTyping();
             const response = await MODEL.contextInteract([
-                MODEL.messageFactory(mess, 'system'),
-                ...stripImages(contextService.getContext(message.channelId)),
-            ], SPONTANEOUS_MODEL_NAME);
+                MODEL.messageFactory(getServerSummarySystemPrompt(), 'system'),
+                MODEL.messageFactory(`Historia ostatnich wiadomości z serwera:\n${combinedText}`),
+            ], SERVER_SUMMARY_MODEL_NAME);
+
             if (response) {
                 const content = stripLeadingTimestampPrefix(response.content);
-                contextService.pushWithLimit(this.marvinResponseFactory(content), message.channelId);
-                message.reply(content.substring(0, 1950));
-                contextService.saveContextToFile("context.json");
+                this.contextService.pushWithLimit(this.marvinResponseFactory(content), BOTS_CHANNEL_ID);
+                channel.send(content.substring(0, 1950));
+                this.contextService.saveContextToFile("context.json");
             }
         } catch (error: any) {
-            return exceptionHandler(error, message);
+            return exceptionHandler(error, channel);
         }
     }
 
