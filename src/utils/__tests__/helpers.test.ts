@@ -33,16 +33,13 @@ describe('pushWithLimit', () => {
         expect(array).toEqual([]);
     });
 
-    it('should use default limit of 5', () => {
+    it('should use default limit of 10', () => {
         const array: number[] = [];
 
-        pushWithLimit(array, 1);
-        pushWithLimit(array, 2);
-        pushWithLimit(array, 3);
-        pushWithLimit(array, 4);
-        pushWithLimit(array, 5);
-        pushWithLimit(array, 6);
+        for (let i = 1; i <= 11; i++) {
+            pushWithLimit(array, i);
+        }
 
-        expect(array).toEqual([2, 3, 4, 5, 6]);
+        expect(array).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
     });
 });

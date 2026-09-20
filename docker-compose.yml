@@ -6,3 +6,8 @@ services:
       context: ./
       dockerfile: ./Dockerfile
     restart: unless-stopped
+    volumes:
+      - marvin_data:/usr/src/app/data
+
+volumes:
+  marvin_data:
