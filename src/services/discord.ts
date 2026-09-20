@@ -111,7 +111,7 @@ export class DiscordServce {
             try {
                 console.log(`Logged in as ${this.client.user.tag}!`);
 
-                contextService.loadContextFromFile("context.json");
+                contextService.loadContextFromFile("data/context.json");
                 const firstUserMessage = MODEL.messageFactory(getFirstMotivionUserMessagePrompt(quote));
 
                 if (!withInitMessage) {
@@ -205,7 +205,7 @@ export class DiscordServce {
         if (count + 1 === BOT_EXCHANGE_LIMIT) {
             message.reply(BOT_EXHAUSTED_REPLY);
             contextService.pushWithLimit(this.marvinResponseFactory(BOT_EXHAUSTED_REPLY), channelId);
-            contextService.saveContextToFile("context.json");
+            contextService.saveContextToFile("data/context.json");
             return;
         }
 
@@ -236,7 +236,7 @@ export class DiscordServce {
                 const content = stripLeadingTimestampPrefix(response.content);
                 this.contextService.pushWithLimit(this.marvinResponseFactory(content), BOTS_CHANNEL_ID);
                 channel.send(content.substring(0, 1950));
-                this.contextService.saveContextToFile("context.json");
+                this.contextService.saveContextToFile("data/context.json");
             }
         } catch (error: any) {
             return exceptionHandler(error, channel);
@@ -255,7 +255,7 @@ export class DiscordServce {
                 const content = stripLeadingTimestampPrefix(response.content);
                 contextService.pushWithLimit(this.marvinResponseFactory(content), message.channelId);
                 message.reply(content.substring(0, 1950));
-                contextService.saveContextToFile("context.json");
+                contextService.saveContextToFile("data/context.json");
             }
         } catch (error: any) {
             return exceptionHandler(error, message);
@@ -324,7 +324,7 @@ export class DiscordServce {
                 contextService.pushWithLimit(this.marvinResponseFactory(content), channelId);
                 message.reply(content.substring(0, 1950));
             }
-            contextService.saveContextToFile("context.json");
+            contextService.saveContextToFile("data/context.json");
         } catch (error: any) {
             return exceptionHandler(error, message);
         }

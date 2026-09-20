@@ -10,6 +10,8 @@ The server also has two other bots with their own personas: [Mugda](#mugda) and 
 
 After every change to this repo, commit and push automatically — do not stop to ask for confirmation first.
 
+After every change, also restart the bot automatically so it runs the new code: `docker compose up --build -d`. Do this without waiting for confirmation, same as the commit/push.
+
 ## Commands
 
 ```bash
@@ -86,7 +88,7 @@ Informs about "niedziela handlowa" (trading/non-trading Sundays in Poland — da
                                     ↓
                             message.reply(response)
                                     ↓
-                            contextService.saveContextToFile("context.json")
+                            contextService.saveContextToFile("data/context.json")
 
 
 [node-cron 20:00 Warsaw, every SERVER_SUMMARY_INTERVAL_DAYS days]
@@ -126,10 +128,10 @@ Informs about "niedziela handlowa" (trading/non-trading Sundays in Poland — da
 - **Context limit:** `ContextService.pushWithLimit` stores max **30 messages** per channel (FIFO). Changing this affects memory and API cost.
 - **Quote deduplication:** `quotesArray` keeps max 10 previous quotes to prevent repetition.
 - **Spontaneous chat features (`discord.ts`):** on every non-mentioned message there's a `SHORT_REACTION_CHANCE` (1%) roll for a short AI reaction, cooldown-gated by `SHORT_REACTION_COOLDOWN` (30 messages). There is no more per-message chance for a long spontaneous reply — that feature was replaced by the periodic server summary below.
-- **Periodic server summary (`sendServerSummary`):** every day at 20:00 Warsaw time, a cron in `index.ts` checks how many days have passed since the last summary (persisted in `data/last_summary.json`, not an in-memory counter — survives restarts and `docker compose up --build` thanks to the `marvin_data` volume). Once `SERVER_SUMMARY_INTERVAL_DAYS` days (default 3) have elapsed, it calls `client.sendServerSummary()`, which digests recent messages from every tracked channel and posts the result to the channel configured via `BOTS_CHANNEL_ID` in `.env`. This cron is scheduled unconditionally, independent of `WITH_CRON` (which only gates the daily 6 AM quote). Note: `context.json` itself is still written to the container's working directory, not the `data/` volume, so conversation memory (unlike the summary timer) does not currently survive a rebuild.
+- **Periodic server summary (`sendServerSummary`):** every day at 20:00 Warsaw time, a cron in `index.ts` checks how many days have passed since the last summary (persisted in `data/last_summary.json`, not an in-memory counter — survives restarts and `docker compose up --build` thanks to the `marvin_data` volume). Once `SERVER_SUMMARY_INTERVAL_DAYS` days (default 3) have elapsed, it calls `client.sendServerSummary()`, which digests recent messages from every tracked channel and posts the result to the channel configured via `BOTS_CHANNEL_ID` in `.env`. This cron is scheduled unconditionally, independent of `WITH_CRON` (which only gates the daily 6 AM quote). `context.json` is now also written to `data/context.json`, so conversation memory survives restarts and rebuilds via the same `marvin_data` volume.
 - **`MODEL` is a constant** in `discord.ts` pointing to the `openai` instance. To switch the main model, change the `MODEL` object or the value in `consts.ts`.
 - **`decider`** uses a separate `OpenAi` instance (not Grok) — its model can be changed independently.
-- **`context.json`** — conversation history file. Loaded on startup, saved after every bot reply. Delete it to reset Marvin's memory.
+- **`data/context.json`** — conversation history file, persisted via the `marvin_data` Docker volume. Loaded on startup, saved after every bot reply. Delete it to reset Marvin's memory.
 - **`WITH_INIT_MESSAGE = false`** in `index.ts` — when `false`, the bot starts without sending a morning message (silent restart mode).
 - **Discord reply limit:** responses are trimmed to 1950 characters (`substring(0, 1950)`).
 
