@@ -28,6 +28,7 @@ npm test              # Jest tests
 | `DISCORD_CLIENT_TOKEN` | Discord bot token (from Discord Developer Portal) |
 | `CHANNEL_ID` | Channel ID where the bot sends morning quotes |
 | `BOTS_CHANNEL_ID` | Channel ID (bots conversation channel) where the periodic server summary is posted |
+| `SUMMARY_EXCLUDED_CHANNEL_IDS` | Comma-separated channel IDs to exclude from the periodic server summary (e.g. dev/issue-tracker channels) |
 | `MARVIN_ID` | Bot's Discord user ID — used to detect mentions |
 | `MARVIN_USERNAME` | Bot's username — used to ignore its own messages |
 | `PERPLEXITY_KEY` | Perplexity API key (web search) |

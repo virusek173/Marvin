@@ -30,6 +30,7 @@ const {
     DISCORD_CLIENT_TOKEN,
     CHANNEL_ID,
     BOTS_CHANNEL_ID,
+    SUMMARY_EXCLUDED_CHANNEL_IDS,
     MARVIN_ID,
     MARVIN_USERNAME,
     HOMAR_ID,
@@ -59,6 +60,10 @@ const peopleMap = {
 }
 
 const DEFAULT_QUOTE = "Co żyje to żyje";
+const EXCLUDED_SUMMARY_CHANNEL_IDS = (SUMMARY_EXCLUDED_CHANNEL_IDS || '')
+    .split(',')
+    .map(id => id.trim())
+    .filter(Boolean);
 const openai = new OpenAi();
 const grok = new Grok();
 const decider = new OpenAi();
@@ -229,8 +234,9 @@ export class DiscordServce {
         if (!channel) return;
 
         try {
-            const combinedText = Object.values(this.contextService.getContextMap())
-                .flatMap(messages => stripImages(messages))
+            const combinedText = Object.entries(this.contextService.getContextMap())
+                .filter(([channelId]) => !EXCLUDED_SUMMARY_CHANNEL_IDS.includes(channelId))
+                .flatMap(([, messages]) => stripImages(messages))
                 .map(m => (typeof m.content === 'string' ? m.content : ''))
                 .filter(Boolean)
                 .join('\n');
