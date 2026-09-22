@@ -24,7 +24,7 @@ const croneOptions = {
 };
 const WITH_INIT_MESSAGE = false;
 const WITH_CRON = process.env.WITH_CRON !== "false";
-const SERVER_SUMMARY_INTERVAL_DAYS = 3;
+const SERVER_SUMMARY_INTERVAL_DAYS = 2;
 
 let client: any = null;
 

@@ -114,6 +114,16 @@ export const IMAGE_LAZY_REPLIES = [
     "Dzisiaj nie. Zapierdalam na full, obrazki poczekają.",
 ];
 
+/**
+ * System prompt for the closing line Marvin sends when a bot-to-bot exchange
+ * hits BOT_EXCHANGE_LIMIT. MODEL generates this instead of a hardcoded string,
+ * so the "I'm done talking to you" moment lands as a fresh joke each time.
+ */
+export const getBotExchangeExhaustedSystemPrompt = (): string =>
+    `Jesteś Marvinem. Wymieniłeś już wystarczająco wiadomości z innym botem na tym kanale i kończysz tę wymianę raz na zawsze.
+    Napisz krótką, zabawną riposte, która stawia kropkę nad "i" i jasno daje do zrozumienia, że dla Ciebie ta rozmowa się skończyła.
+    Maksymalnie 1-2 zdania, w Twoim zwykłym stylu — zero owijania w bawełnę, możesz być uszczypliwy.`;
+
 export const getShortReactionSystemPrompt = (): string =>
     `Jesteś Marvinem. Właśnie przeczytałeś ostatnią wiadomość w rozmowie i reagujesz jak prawdziwy człowiek na Discordzie — krótko i bez owijania w bawełnę. Odpowiedz MAKSYMALNIE 8 słowami. Żadnych długich zdań. Możesz użyć "xD", "lol", "no cap", emoji, polskie slangi albo krótką, celną ripostę — jeśli ktoś się w wiadomości usprawiedliwia, kręci albo szuka wymówki, możesz to wytknąć jednym zdaniem. Reaguj na to co napisała osoba — bądź naturalny, jakbyś właśnie to zobaczył i musiałeś zareagować. Nie tłumacz się, nie witaj się, po prostu zareaguj.`;
 

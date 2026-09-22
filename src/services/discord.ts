@@ -15,6 +15,7 @@ import {
     DECIDER_SYSTEM_PROMPT,
     IMAGE_LAZY_REPLIES,
     getServerSummarySystemPrompt,
+    getBotExchangeExhaustedSystemPrompt,
     getShortReactionSystemPrompt,
     getFirstMotivionUserMessagePrompt,
     getMarvinMotivationSystemPrompt,
@@ -195,7 +196,7 @@ export class DiscordServce {
         return MODEL.messageFactory(`[${timestamp}] Marvin: ${content}`, 'assistant');
     }
 
-    /** Handles a message from another bot. Responds up to BOT_EXCHANGE_LIMIT times per channel, then replies once with BOT_EXHAUSTED_REPLY and goes silent until a human resets the counter. */
+    /** Handles a message from another bot. Responds up to BOT_EXCHANGE_LIMIT times per channel, then sends a generated closing line and goes silent until a human resets the counter. */
     async handleBotMessage(message: any, contextService: ContextService) {
         const { channelId } = message;
         const count = botExchangeCounters.get(channelId) ?? 0;
@@ -203,8 +204,18 @@ export class DiscordServce {
 
         botExchangeCounters.set(channelId, count + 1);
         if (count + 1 === BOT_EXCHANGE_LIMIT) {
-            message.reply(BOT_EXHAUSTED_REPLY);
-            contextService.pushWithLimit(this.marvinResponseFactory(BOT_EXHAUSTED_REPLY), channelId);
+            let content = BOT_EXHAUSTED_REPLY;
+            try {
+                const response = await MODEL.contextInteract([
+                    MODEL.messageFactory(getBotExchangeExhaustedSystemPrompt(), 'system'),
+                    ...stripImages(contextService.getContext(channelId)),
+                ], SHORT_REACTION_MODEL_NAME);
+                if (response) content = stripLeadingTimestampPrefix(response.content);
+            } catch (error: any) {
+                console.log("err: ", error?.message);
+            }
+            message.reply(content.substring(0, 1950));
+            contextService.pushWithLimit(this.marvinResponseFactory(content), channelId);
             contextService.saveContextToFile("data/context.json");
             return;
         }
