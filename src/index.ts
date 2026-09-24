@@ -71,6 +71,8 @@ if (WITH_CRON) {
   console.log("Cron wyłączony (WITH_CRON=false).");
 }
 
+const roundToMinute = (ms: number): number => Math.round(ms / 60000) * 60000;
+
 console.log(`Uruchamiam podsumowanie serwera co ${SERVER_SUMMARY_INTERVAL_DAYS} dni.`);
 cron.schedule(croneMap.EVERY_DAY_EIGHT_PM, () => {
   const lastSummaryAt = readLastSummaryAt();
@@ -78,7 +80,7 @@ cron.schedule(croneMap.EVERY_DAY_EIGHT_PM, () => {
     writeLastSummaryAt(new Date());
     return;
   }
-  const daysSinceLastSummary = (Date.now() - lastSummaryAt.getTime()) / (1000 * 60 * 60 * 24);
+  const daysSinceLastSummary = (roundToMinute(Date.now()) - roundToMinute(lastSummaryAt.getTime())) / (1000 * 60 * 60 * 24);
   if (daysSinceLastSummary >= SERVER_SUMMARY_INTERVAL_DAYS) {
     writeLastSummaryAt(new Date());
     client?.sendServerSummary();
