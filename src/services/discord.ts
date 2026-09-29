@@ -4,6 +4,7 @@ import {
     mapGlobalNameNameToRealName,
     stripImages,
     stripLeadingTimestampPrefix,
+    parseContextTimestamp,
 } from "../utils/helpers.js";
 import { Message, OpenAi } from "../services/openai.js";
 import { DateService } from "./date.js";
@@ -229,7 +230,7 @@ export class DiscordServce {
     }
 
     /** Posts a digest of recent activity across all tracked channels to the bots channel. Triggered on a cron schedule (see index.ts), not by individual messages. */
-    async sendServerSummary() {
+    async sendServerSummary(since?: Date) {
         const channel = this.client.channels.cache.get(BOTS_CHANNEL_ID);
         if (!channel) return;
 
@@ -239,6 +240,12 @@ export class DiscordServce {
                 .flatMap(([, messages]) => stripImages(messages))
                 .map(m => (typeof m.content === 'string' ? m.content : ''))
                 .filter(Boolean)
+                .filter(text => {
+                    if (!since) return true;
+                    const sentAt = parseContextTimestamp(text);
+                    const sinceMinute = Math.floor(since.getTime() / 60000) * 60000;
+                    return !!sentAt && sentAt.getTime() > sinceMinute;
+                })
                 .join('\n');
 
             if (!combinedText) return;

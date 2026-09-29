@@ -83,6 +83,6 @@ cron.schedule(croneMap.EVERY_DAY_EIGHT_PM, () => {
   const daysSinceLastSummary = (roundToMinute(Date.now()) - roundToMinute(lastSummaryAt.getTime())) / (1000 * 60 * 60 * 24);
   if (daysSinceLastSummary >= SERVER_SUMMARY_INTERVAL_DAYS) {
     writeLastSummaryAt(new Date());
-    client?.sendServerSummary();
+    client?.sendServerSummary(lastSummaryAt);
   }
 }, croneOptions);

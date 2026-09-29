@@ -57,6 +57,13 @@ export const stripImages = (context: Message[]): Message[] =>
 export const stripLeadingTimestampPrefix = (content: string): string =>
   content.replace(/^\s*\[\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}\]\s*[^\]\n:]+:\s*/, "");
 
+/** Parses the leading "[YYYY.MM.DD HH:MM]" prefix of a context message (process-local time); null if absent. */
+export const parseContextTimestamp = (content: unknown): Date | null => {
+  if (typeof content !== "string") return null;
+  const m = content.match(/^\s*\[(\d{4})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2})\]/);
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : null;
+};
+
 export const exceptionHandler = (error: any, message: any) => {
   console.log("err: ", error?.message);
 

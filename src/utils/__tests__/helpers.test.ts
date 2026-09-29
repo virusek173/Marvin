@@ -1,4 +1,15 @@
-import { pushWithLimit } from '../helpers';
+import { pushWithLimit, parseContextTimestamp } from '../helpers';
+
+describe('parseContextTimestamp', () => {
+    it('parses the leading timestamp prefix', () => {
+        expect(parseContextTimestamp('[2026.09.29 18:53] Domin: hej')).toEqual(new Date(2026, 8, 29, 18, 53));
+    });
+
+    it('returns null when there is no prefix', () => {
+        expect(parseContextTimestamp('bez daty')).toBeNull();
+        expect(parseContextTimestamp(undefined)).toBeNull();
+    });
+});
 
 describe('pushWithLimit', () => {
     it('should add items to array up to the limit', () => {
