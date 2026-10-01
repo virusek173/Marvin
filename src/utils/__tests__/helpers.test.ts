@@ -1,4 +1,24 @@
-import { pushWithLimit, parseContextTimestamp } from '../helpers';
+import { pushWithLimit, parseContextTimestamp, splitForDiscord } from '../helpers';
+
+describe('splitForDiscord', () => {
+    it('leaves a short reply untouched', () => {
+        expect(splitForDiscord('krótko')).toEqual(['krótko']);
+    });
+
+    it('splits at line boundaries instead of mid-word, keeping every part within the limit', () => {
+        const lines = Array.from({ length: 40 }, (_, i) => `- punkt ${i} ${'x'.repeat(40)}`);
+        const parts = splitForDiscord(lines.join('\n'), 500, 10);
+        expect(parts.length).toBeGreaterThan(1);
+        expect(parts.every(p => p.length <= 500)).toBe(true);
+        expect(parts.join('\n')).toBe(lines.join('\n'));
+    });
+
+    it('cuts a text without any boundary and caps the number of parts', () => {
+        const parts = splitForDiscord('a'.repeat(5000), 1000, 3);
+        expect(parts).toHaveLength(3);
+        expect(parts.every(p => p.length <= 1000)).toBe(true);
+    });
+});
 
 describe('parseContextTimestamp', () => {
     it('parses the leading timestamp prefix', () => {

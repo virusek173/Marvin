@@ -64,6 +64,13 @@ describe("HistoryQuery", () => {
     });
 
     describe("search", () => {
+        it("matches the channel name ignoring case and Polish diacritics", () => {
+            db.upsertChannel("c3", "Ogólny-Żart", null);
+            db.insertLive(row({ content: "dowcip dnia", channelId: "c3" }));
+            expect(q.search({ query: "dowcip", channel: "ogolny-zart" }).count).toBe(1);
+            expect(q.search({ query: "dowcip", channel: "#OGÓLNY-ŻART" }).count).toBe(1);
+        });
+
         it("finds Polish text ignoring diacritics, prefix-matches inflections, ranks and renders Warsaw time", () => {
             db.insertLive(row({ content: "Kupiłem nową żółtą kurtkę", createdAt: BASE }));
             db.insertLive(row({ content: "nic ciekawego" }));

@@ -26,7 +26,7 @@ src/
 │       └── time.ts        Warsaw-time formatting/parsing
 └── utils/
     ├── prompts.ts         All system prompts and prompt factories
-    ├── helpers.ts         pushWithLimit, mapGlobalNameNameToRealName, exceptionHandler
+    ├── helpers.ts         pushWithLimit, mapGlobalNameNameToRealName, exceptionHandler, splitForDiscord
     └── consts.ts          Model name constants
 ```
 
@@ -100,7 +100,7 @@ Discord: user sends message
                                 ↓  empty / leaked-tool-call replies are retried twice, then an error is raised)
                     │
                     └── (both paths)
-                            message.reply(response.substring(0, 1950))
+                            splitForDiscord(response) → reply + follow-up messages (≤1950 chars each)
                             ↓ the reply comes back through "messageCreate" and is archived like any other message
 ```
 

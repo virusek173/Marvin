@@ -224,10 +224,10 @@ export class HistoryQuery {
         }
         if (f.channel?.trim()) {
             const wanted = f.channel.trim().replace(/^#/, "");
-            const ids = (this.db
-                .prepare(`SELECT id FROM channels WHERE id = ? OR name = ? COLLATE NOCASE
-                    OR parent_id IN (SELECT id FROM channels WHERE id = ? OR name = ? COLLATE NOCASE)`)
-                .all(wanted, wanted, wanted, wanted) as { id: string }[]).map(r => r.id);
+            const key = foldSameLength(wanted);
+            const all = this.db.prepare("SELECT id, name, parent_id FROM channels").all() as { id: string; name: string | null; parent_id: string | null }[];
+            const direct = new Set(all.filter(c => c.id === wanted || (c.name !== null && foldSameLength(c.name) === key)).map(c => c.id));
+            const ids = all.filter(c => direct.has(c.id) || (c.parent_id !== null && direct.has(c.parent_id))).map(c => c.id);
             if (ids.length === 0) return `Nie znam kanału "${wanted}". Użyj listy kanałów.`;
             parts.push(`${alias}.channel_id IN (${ids.map(() => "?").join(",")})`);
             params.push(...ids);

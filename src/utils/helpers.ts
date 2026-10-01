@@ -57,6 +57,21 @@ export const stripImages = (context: Message[]): Message[] =>
 export const stripLeadingTimestampPrefix = (content: string): string =>
   content.replace(/^\s*\[\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}\]\s*[^\]\n:]+:\s*/, "");
 
+/** Splits a long reply into Discord-sized parts, preferring paragraph, line, then word boundaries; the last part is cut if `maxParts` is exceeded. */
+export const splitForDiscord = (text: string, maxLength = 1950, maxParts = 4): string[] => {
+  const parts: string[] = [];
+  let rest = text.trim();
+  while (rest.length > maxLength && parts.length < maxParts - 1) {
+    const window = rest.slice(0, maxLength);
+    const boundary = ["\n\n", "\n", " "].map(s => window.lastIndexOf(s)).find(i => i >= maxLength / 2);
+    const cut = boundary ?? maxLength;
+    parts.push(rest.slice(0, cut).trimEnd());
+    rest = rest.slice(cut).trimStart();
+  }
+  if (rest) parts.push(rest.slice(0, maxLength));
+  return parts;
+};
+
 /** Parses the leading "[YYYY.MM.DD HH:MM]" prefix of a context message (process-local time); null if absent. */
 export const parseContextTimestamp = (content: unknown): Date | null => {
   if (typeof content !== "string") return null;

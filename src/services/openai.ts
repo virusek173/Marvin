@@ -33,6 +33,7 @@ export interface ToolLoopOptions {
 }
 
 const MAX_TOOL_RESULT_CHARS = 40000;
+const MAX_TOTAL_TOOL_CHARS = 70000;
 const MAX_MALFORMED_RETRIES = 2;
 const TOOL_REASONING_EFFORT = "low";
 const TOOL_MAX_OUTPUT_TOKENS = 4000;
@@ -119,6 +120,7 @@ export class OpenAi {
         }));
         const input: any[] = context.map(toResponsesInput);
         let malformed = 0;
+        const spent = { chars: 0 };
 
         try {
             for (let round = 0; round <= maxRounds; round++) {
@@ -147,7 +149,7 @@ export class OpenAi {
                     input.push({
                         type: "function_call_output",
                         call_id: call.call_id,
-                        output: await this.runTool(byName.get(call.name), call),
+                        output: await this.runTool(byName.get(call.name), call, spent),
                     });
                 }
             }
@@ -157,17 +159,19 @@ export class OpenAi {
         }
     }
 
-    private async runTool(tool: ToolSpec | undefined, call: { name: string; arguments?: string }): Promise<string> {
+    private async runTool(tool: ToolSpec | undefined, call: { name: string; arguments?: string }, spent: { chars: number }): Promise<string> {
         const started = Date.now();
         let output: unknown;
         try {
             if (!tool) throw new Error(`Nieznane narzędzie: ${call.name}`);
+            if (spent.chars >= MAX_TOTAL_TOOL_CHARS) throw new Error("Budżet danych na to pytanie wyczerpany. Odpowiedz na podstawie tego, co już masz.");
             output = await tool.run(call.arguments ? JSON.parse(call.arguments) : {});
         } catch (error: any) {
             output = { error: String(error?.message ?? error) };
         }
         let text = JSON.stringify(output);
         if (text.length > MAX_TOOL_RESULT_CHARS) text = JSON.stringify({ error: "Wynik za duży, zawęź zapytanie." });
+        spent.chars += text.length;
         const count = (output as any)?.count ?? (Array.isArray(output) ? output.length : undefined);
         console.log(`[tool] ${call.name} ${call.arguments} -> ${(output as any)?.error ? "błąd" : `wyników: ${count ?? "?"}`} (${Date.now() - started} ms)`);
         return text;

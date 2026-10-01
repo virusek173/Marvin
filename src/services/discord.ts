@@ -5,6 +5,7 @@ import {
     stripImages,
     stripLeadingTimestampPrefix,
     parseContextTimestamp,
+    splitForDiscord,
 } from "../utils/helpers.js";
 import { Message, OpenAi, ToolSpec } from "../services/openai.js";
 import { DateService } from "./date.js";
@@ -292,7 +293,7 @@ export class DiscordServce {
 
             if (response) {
                 const content = stripLeadingTimestampPrefix(response.content);
-                channel.send(content.substring(0, 1950));
+                for (const part of splitForDiscord(content)) await channel.send(part);
             }
         } catch (error: any) {
             return exceptionHandler(error, channel);
@@ -410,7 +411,9 @@ export class DiscordServce {
             if (assResponse) {
                 const content = stripLeadingTimestampPrefix(assResponse.content ?? "");
                 if (!content.trim()) throw new Error("Model zwrócił pustą odpowiedź");
-                await message.reply(content.substring(0, 1950));
+                const [first, ...rest] = splitForDiscord(content);
+                await message.reply(first);
+                for (const part of rest) await message.channel.send(part);
             }
         } catch (error: any) {
             return exceptionHandler(error, message);

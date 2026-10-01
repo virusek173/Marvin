@@ -114,6 +114,17 @@ describe("OpenAi.contextInteractWithTools", () => {
         expect(assistant.content).toEqual([{ type: "output_text", text: "b" }]);
     });
 
+    it("stops running tools once the total output budget for a question is spent", async () => {
+        const chunk: ToolSpec = { ...search, name: "chunk", run: jest.fn(() => ({ text: "a".repeat(35000) })) };
+        create
+            .mockResolvedValueOnce(toolRequest(call("a", "chunk", {}), call("b", "chunk", {}), call("c", "chunk", {})))
+            .mockResolvedValueOnce(answer("ok"));
+        await ai().contextInteractWithTools([{ role: "user", content: "x" }], [chunk]);
+        expect(chunk.run).toHaveBeenCalledTimes(2);
+        const outputs = create.mock.calls[1][0].input.filter((i: any) => i.type === "function_call_output");
+        expect(JSON.parse(outputs[2].output).error).toMatch(/Budżet/);
+    });
+
     it("replaces oversized tool output with an error", async () => {
         const big: ToolSpec = { ...search, name: "big", run: () => ({ text: "a".repeat(50000) }) };
         create

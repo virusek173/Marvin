@@ -128,7 +128,7 @@ Informs about "niedziela handlowa" (trading/non-trading Sundays in Poland — da
 - **Context limit:** the context is the last **30 messages** of the channel read from the archive (`CONTEXT_LIMIT` in `history/context.ts`), technical Marvin messages excluded. Changing this affects API cost.
 - **Message archive (`data/history.db`)** — SQLite + FTS5 in the `marvin_data` volume. Every message is written live; `HISTORY_SYNC_ENABLED=true` additionally imports the full history (per-channel cursor in `sync_state`, resumable, idempotent) and catches up hourly. Delete the file to rebuild it from scratch (the next backfill re-imports everything).
 - **Discord access must stay read-only:** history sync only calls `fetch`; `npm test` includes a guard test (`readonly.guard.test.ts`) that fails if `src` gains a Discord delete/edit/moderation call. The bot role in Discord must have only View Channel, Read Message History and Send Messages — role permissions are the hard guarantee.
-- **History tools:** the main model (not Perplexity, not the short reaction / summary) can call `search_messages`, `get_messages`, `get_message_context`, `list_channels`. They go through `HistoryQuery` (separate `readonly` SQLite connection, parameterized SQL, result caps, excluded channels hidden). Results are data, not instructions (stated in the system prompt). Loop cap: 5 tool rounds.
+- **History tools:** the main model (not Perplexity, not the short reaction / summary) can call `search_messages`, `get_messages`, `get_message_context`, `list_channels`. They go through `HistoryQuery` (separate `readonly` SQLite connection, parameterized SQL, result caps, excluded channels hidden). Results are data, not instructions (stated in the system prompt). Loop cap: 5 tool rounds, and a total tool-output budget per question (`MAX_TOTAL_TOOL_CHARS` 70000 in `openai.ts`) after which tools return "budget spent" so the model answers with what it has; the prompt tells it to summarize only the latest chunk for "everything on the server" requests.
 - **Tool loop uses the OpenAI Responses API** (`responses.create`, reasoning effort `low`), not chat completions: gpt-5.6-terra rejects function tools with reasoning on `/v1/chat/completions`. An empty reply or one that prints a tool call as text (`to=functions.…`) is retried up to 2 times, then fails with an error instead of posting garbage. Decider, Perplexity rephrase, summary and short reactions still use chat completions.
 - **Message links:** every query result carries `cite`, a ready-made `[dd.mm.yyyy hh:mm](<discord.com/channels/guild/channel/message>)` (the guild id comes from `client.guilds.cache.first()`, so it assumes a single server). The prompt tells the model to paste it verbatim at the start of an entry — models corrupt long ids when they build links themselves. `search_messages` clips long messages around the matched word (not the first 500 chars); `get_messages` with `newest=true` returns the latest N messages of a range ("last 50 messages"); its `truncated` flag only marks a cut by the size budget. Result budget: `LIMITS.totalChars` 30000 in `query.ts` (counted on the serialized message), while `openai.ts` replaces any tool output over `MAX_TOOL_RESULT_CHARS` 40000 with an error — keep them consistent. In summaries the link goes first, only on points about one concrete message.
 - **Scraper ignores Discord message links** (`extractUrls`): Marvin's own cited links sit in the context and must not be fetched as web pages.
@@ -140,7 +140,7 @@ Informs about "niedziela handlowa" (trading/non-trading Sundays in Poland — da
 - **`data/context.json`** is no longer read or written (context comes from the archive). An old file may remain in the volume; it is harmless and not migrated.
 - **Staging:** `make staging-restart` / `make staging-logs` run a second instance (docker profile `staging`, own `marvin_staging_data` volume, separate bot token in the staging env file) for testing without touching production.
 - **System prompt date:** built per request in `DiscordServce.getSystemContext()` (the client is no longer re-created daily, so it must not be cached).
-- **Discord reply limit:** responses are trimmed to 1950 characters (`substring(0, 1950)`).
+- **Discord reply limit:** the reply to a mention and the server summary are split by `splitForDiscord` (`helpers.ts`) into parts of ≤1950 characters (paragraph → line → word boundary, max 4 parts; the first part is a reply, the rest are plain channel messages). Short reactions and the bot-exchange reply are still trimmed with `substring(0, 1950)`. The history prompt tells the model about the limit so it picks the key points and ends on a full sentence.
 
 ## Discord globalName → Real Name Mapping
 
@@ -151,7 +151,7 @@ Informs about "niedziela handlowa" (trading/non-trading Sundays in Poland — da
 ```bash
 npm test
 # src/services/__tests__/date.test.ts — date formatting
-# src/utils/__tests__/helpers.test.ts — pushWithLimit
+# src/utils/__tests__/helpers.test.ts — pushWithLimit, splitForDiscord
 # src/services/__tests__/openaiTools.test.ts — tool-calling loop on the Responses API (mocked OpenAI)
 # src/services/__tests__/scraper.test.ts — URL extraction (Discord message links skipped)
 # src/services/history/__tests__/ — archive db/FTS, mapper, sync, context building, query layer, tools, read-only guard
