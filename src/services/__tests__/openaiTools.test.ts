@@ -115,7 +115,7 @@ describe("OpenAi.contextInteractWithTools", () => {
     });
 
     it("replaces oversized tool output with an error", async () => {
-        const big: ToolSpec = { ...search, name: "big", run: () => ({ text: "a".repeat(30000) }) };
+        const big: ToolSpec = { ...search, name: "big", run: () => ({ text: "a".repeat(50000) }) };
         create
             .mockResolvedValueOnce(toolRequest(call("a", "big", {})))
             .mockResolvedValueOnce(answer("ok"));

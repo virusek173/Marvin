@@ -11,7 +11,7 @@ export const LIMITS = {
     rangeMax: 100,
     aroundMax: 15,
     textChars: 500,
-    totalChars: 16000,
+    totalChars: 30000,
     queryTokens: 8,
 };
 
@@ -152,7 +152,11 @@ export class HistoryQuery {
                 ORDER BY m.created_at ${direction}, CAST(m.id AS INTEGER) ${direction} LIMIT ?`)
             .all(...filter.params, limit + 1);
         const result = this.render(rows as any[], limit);
-        if (args.newest) result.messages.reverse();
+        if (args.newest) {
+            // Older messages beyond the limit are expected here; flag only a cut caused by the size budget.
+            result.truncated = result.count < Math.min(rows.length, limit);
+            result.messages.reverse();
+        }
         return result;
     }
 
@@ -263,18 +267,20 @@ export class HistoryQuery {
         for (const r of rows.slice(0, limit)) {
             const text = this.cleanText(renderBody({ content: r.content, embedsText: r.embeds_text, attachmentsText: r.attachments_text }));
             const clipped = clip(text, terms);
-            if (chars + clipped.length > LIMITS.totalChars) { budgetHit = true; break; }
-            chars += clipped.length;
             const time = formatWarsaw(r.created_at);
             const [y, mo, d, hm] = time.split(/[. ]/);
-            messages.push({
+            const message: HistoryMessage = {
                 id: r.id,
                 channel: nameOf(r.channel_id),
                 author: r.author_id === this.selfId ? "Marvin" : mapGlobalNameNameToRealName[r.author_name],
                 time,
                 text: clipped,
                 ...(guild ? { cite: `[${d}.${mo}.${y} ${hm}](<https://discord.com/channels/${guild}/${r.channel_id}/${r.id}>)` } : null),
-            });
+            };
+            const size = JSON.stringify(message).length;
+            if (chars + size > LIMITS.totalChars) { budgetHit = true; break; }
+            chars += size;
+            messages.push(message);
         }
         return { timezone: WARSAW_TZ, count: messages.length, truncated: overLimit || budgetHit, messages };
     }

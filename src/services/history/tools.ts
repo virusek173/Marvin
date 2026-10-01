@@ -44,7 +44,7 @@ export const buildHistoryTools = (query: HistoryQuery): ToolSpec[] => [
         description:
             "Zwraca wiadomości z zakresu czasu (zawsze ułożone od najstarszej), np. 'co działo się wczoraj'. Opcjonalnie z jednego kanału lub od jednej osoby. " +
             "Gdy w zakresie jest więcej wiadomości niż limit, dostajesz najwcześniejsze — zawęź zakres, żeby zobaczyć kolejne. " +
-            "Do pytań o 'ostatnie N wiadomości' ustaw newest=true (wtedy daty są zbędne): dostaniesz N najnowszych wiadomości, nie zgaduj okna dat.",
+            "Do pytań o 'ostatnie N wiadomości' ustaw newest=true i limit=N (wtedy daty są zbędne): dostaniesz dokładnie N najnowszych wiadomości w jednym wywołaniu — nie zgaduj okna dat i nie dociągaj kolejnych porcji, chyba że użytkownik prosi o więcej.",
         parameters: {
             type: "object",
             properties: {

@@ -163,9 +163,26 @@ describe("HistoryQuery", () => {
             for (let i = 1; i <= 10; i++) db.insertLive(row({ content: `m${i}` }));
             const res = q.range({ limit: 3, newest: true });
             expect(res.messages.map(m => m.text)).toEqual(["m8", "m9", "m10"]);
-            expect(res.truncated).toBe(true);
+            expect(res.truncated).toBe(false);
             expect(q.range({ limit: 3 }).messages.map(m => m.text)).toEqual(["m1", "m2", "m3"]);
+            expect(q.range({ limit: 3 }).truncated).toBe(true);
             expect(q.range({ limit: 50, newest: true }).truncated).toBe(false);
+        });
+
+        it("keeps the whole serialized result (metadata and links included) within the budget", () => {
+            q.close();
+            q = new HistoryQuery(file, { excludedChannelIds: [], selfId: MARVIN, guildId: () => "1279484250936311909" });
+            for (let i = 0; i < 100; i++) db.insertLive(row({ content: "ą".repeat(1500) }));
+            const res = q.range({ limit: 100 });
+            expect(JSON.stringify(res).length).toBeLessThanOrEqual(LIMITS.totalChars + 500);
+            expect(res.truncated).toBe(true);
+        });
+
+        it("with newest still flags a cut caused by the size budget", () => {
+            for (let i = 0; i < 60; i++) db.insertLive(row({ content: "x".repeat(2000) }));
+            const res = q.range({ limit: 60, newest: true });
+            expect(res.count).toBeLessThan(60);
+            expect(res.truncated).toBe(true);
         });
 
         it("caps results and marks truncation", () => {
