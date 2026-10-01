@@ -6,7 +6,7 @@ import {
     stripLeadingTimestampPrefix,
     parseContextTimestamp,
 } from "../utils/helpers.js";
-import { Message, OpenAi } from "../services/openai.js";
+import { Message, OpenAi, ToolSpec } from "../services/openai.js";
 import { DateService } from "./date.js";
 import { ClientService } from "./client.js";
 import { ContextService } from "./context.js";
@@ -20,11 +20,14 @@ import {
     getShortReactionSystemPrompt,
     getMarvinMotivationSystemPrompt,
     getPerplexityToMarvinResponsePrompt,
-    WAKE_UP_MESSAGE_PROMPT
+    WAKE_UP_MESSAGE_PROMPT,
+    HISTORY_TOOLS_PROMPT
 } from "../utils/prompts.js";
 import { DECIDER_MODEL_NAME, SHORT_REACTION_MODEL_NAME, SERVER_SUMMARY_MODEL_NAME } from "../utils/consts.js";
 import { extractUrls, scrapeUrl } from "./scraper.js";
-import { MessageArchive, getExcludedChannelIds } from "./history/archive.js";
+import { MessageArchive, getExcludedChannelIds, HISTORY_DB_FILE } from "./history/archive.js";
+import { HistoryQuery } from "./history/query.js";
+import { buildHistoryTools } from "./history/tools.js";
 import { formatImageDescriptions } from "./history/mapper.js";
 import { INTERNET_NOTICE, linksNotice, isTechnicalMarvinContent } from "./history/technical.js";
 import { HistoryContext, renderLine } from "./history/context.js";
@@ -98,6 +101,8 @@ export class DiscordServce {
     private historyContext: HistoryContext;
     private archive: MessageArchive;
     private historySync: HistorySync | null = null;
+    private historyQuery: HistoryQuery | null = null;
+    private historyTools: ToolSpec[] = [];
 
     constructor() {
         this.fallbackContext = new ContextService({});
@@ -107,6 +112,7 @@ export class DiscordServce {
             excludedChannelIds: EXCLUDED_CHANNEL_IDS,
         });
         this.historyContext = new HistoryContext(this.archive.database, this.fallbackContext, EXCLUDED_CHANNEL_IDS, MARVIN_ID);
+        this.openHistoryTools();
 
         const clientService = new ClientService();
         this.client = clientService.getClient();
@@ -163,6 +169,17 @@ export class DiscordServce {
         this.client.login(DISCORD_CLIENT_TOKEN);
     }
 
+    /** Gives the model read-only history tools over a separate readonly connection; without an archive Marvin simply has no tools. */
+    private openHistoryTools() {
+        if (!this.archive.database) return;
+        try {
+            this.historyQuery = new HistoryQuery(HISTORY_DB_FILE, { excludedChannelIds: EXCLUDED_CHANNEL_IDS, selfId: MARVIN_ID });
+            this.historyTools = buildHistoryTools(this.historyQuery);
+        } catch (error: any) {
+            historyLog.error("nie udało się otworzyć połączenia do odczytu historii — Marvin bez narzędzi historii", error);
+        }
+    }
+
     /** Backfill/catch-up reads the whole server history, so it is opt-in via HISTORY_SYNC_ENABLED=true. */
     private startHistorySync() {
         const db = this.archive.database;
@@ -206,9 +223,10 @@ export class DiscordServce {
     }
 
     /** Built per request so the date in the prompt is never stale. */
-    getSystemContext(): Message {
+    getSystemContext(withHistoryTools: boolean = false): Message {
         const date = new DateService().getFormattedDate();
-        return MODEL.messageFactory(getMarvinMotivationSystemPrompt(date, peopleMap), 'system');
+        const prompt = getMarvinMotivationSystemPrompt(date, peopleMap) + (withHistoryTools ? HISTORY_TOOLS_PROMPT : '');
+        return MODEL.messageFactory(prompt, 'system');
     }
 
     /** Keeps the in-memory fallback context (used only when the archive is unavailable or the channel is excluded) in step. */
@@ -370,11 +388,19 @@ export class DiscordServce {
                     userRequest,
                 ]);
             } else {
-                assResponse = await MODEL.contextInteract([
-                    this.getSystemContext(),
-                    ...context,
-                    ...scrapedContext,
-                ]);
+                if (this.historyTools.length > 0) {
+                    assResponse = await MODEL.contextInteractWithTools(
+                        [this.getSystemContext(true), ...context, ...scrapedContext],
+                        this.historyTools,
+                        { onRound: () => message.channel.sendTyping() }
+                    );
+                } else {
+                    assResponse = await MODEL.contextInteract([
+                        this.getSystemContext(),
+                        ...context,
+                        ...scrapedContext,
+                    ]);
+                }
             }
 
             if (assResponse) {
@@ -388,6 +414,7 @@ export class DiscordServce {
 
     destroy() {
         this.historySync?.stop();
+        this.historyQuery?.close();
         this.client.destroy();
     }
 }
