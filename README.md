@@ -1,6 +1,6 @@
 # Marvin - Motivational Discord Bot
 
-Marvin is a Discord bot that sends a daily motivational quote every morning at 6:00 AM (Warsaw time) and answers questions from server members using multiple AI models.
+Marvin is a Discord bot that answers questions from server members using multiple AI models and posts a periodic server summary.
 
 ## Quick Start
 
@@ -20,7 +20,7 @@ npm run marvin
 
 ```
 src/
-├── index.ts               Entry point — cron scheduler, quote generation
+├── index.ts               Entry point — client startup, summary cron
 ├── services/
 │   ├── discord.ts         Bot logic — message handling and AI routing
 │   ├── context.ts         Per-channel conversation memory (max 30 messages)
@@ -38,7 +38,7 @@ src/
 
 ## How It Works
 
-1. **Every day at 6 AM** — Marvin generates a unique motivational quote and sends a personalized greeting to the configured Discord channel
+1. **Every 2 days at 20:00 (Warsaw)** — Marvin posts a digest of recent server activity to the bots channel
 2. **When mentioned** (`@Marvin` or reply) — Marvin reads the conversation context, decides whether the question needs internet access (Perplexity) or can be answered from knowledge (OpenAI/Grok), and replies accordingly
 3. **All messages** — stored in per-channel context (last 30 messages) persisted in `context.json`
 

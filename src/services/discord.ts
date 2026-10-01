@@ -18,12 +18,11 @@ import {
     getServerSummarySystemPrompt,
     getBotExchangeExhaustedSystemPrompt,
     getShortReactionSystemPrompt,
-    getFirstMotivionUserMessagePrompt,
     getMarvinMotivationSystemPrompt,
     getPerplexityToMarvinResponsePrompt,
     WAKE_UP_MESSAGE_PROMPT
 } from "../utils/prompts.js";
-import { DECIDER_MODEL_NAME, FIRST_MESSAGE_MODEL_NAME, SHORT_REACTION_MODEL_NAME, SERVER_SUMMARY_MODEL_NAME } from "../utils/consts.js";
+import { DECIDER_MODEL_NAME, SHORT_REACTION_MODEL_NAME, SERVER_SUMMARY_MODEL_NAME } from "../utils/consts.js";
 import { extractUrls, scrapeUrl } from "./scraper.js";
 
 dotenv.config();
@@ -60,7 +59,6 @@ const peopleMap = {
     "WibotId": WIBOT_ID || '',
 }
 
-const DEFAULT_QUOTE = "Co żyje to żyje";
 const EXCLUDED_SUMMARY_CHANNEL_IDS = (SUMMARY_EXCLUDED_CHANNEL_IDS || '')
     .split(',')
     .map(id => id.trim())
@@ -80,7 +78,7 @@ const BOT_EXHAUSTED_REPLY = "Mam Cię dość. Nie pisz do mnie więcej.";
 /**
  * Main Discord bot service. Handles:
  * - Bot initialization and login
- * - Sending a morning motivational message on "ready" (if withInitMessage=true)
+ * - Sending a short wake-up message on "ready"
  * - Routing incoming messages to the appropriate AI service (MARVIN or PERPLEXITY)
  *
  * Message routing logic:
@@ -91,27 +89,14 @@ const BOT_EXHAUSTED_REPLY = "Mam Cię dość. Nie pisz do mnie więcej.";
  */
 export class DiscordServce {
     private client: any;
-    private date: string;
-    private systemContext: Message;
     private contextService: ContextService;
-    /**
-     * @param _quote - Motivational quote for today's greeting message
-     * @param withInitMessage - If false, bot starts silently (no morning message). Default: true.
-     */
-    constructor(_quote: string | undefined,
-        withInitMessage: boolean = true) {
+
+    constructor() {
         const contextService = new ContextService({})
         this.contextService = contextService;
 
         const clientService = new ClientService();
         this.client = clientService.getClient();
-
-        const date = new DateService();
-        this.date = date.getFormattedDate();
-        this.systemContext = MODEL.messageFactory(getMarvinMotivationSystemPrompt(this.date, peopleMap), 'system');
-
-        const quote = _quote ? _quote : DEFAULT_QUOTE;
-        console.log("Today's quote: ", quote);
 
         this.client.on("ready", async () => {
             const channel = this.client.channels.cache.get(CHANNEL_ID);
@@ -119,20 +104,9 @@ export class DiscordServce {
                 console.log(`Logged in as ${this.client.user.tag}!`);
 
                 contextService.loadContextFromFile("data/context.json");
-                const firstUserMessage = MODEL.messageFactory(getFirstMotivionUserMessagePrompt(quote));
 
-                if (!withInitMessage) {
-                    const wakeUpMessage = await MODEL.interact(WAKE_UP_MESSAGE_PROMPT);
-                    channel.send(wakeUpMessage?.content ?? "Wstałem.");
-
-                    return;
-                }
-                contextService.pushWithLimit(firstUserMessage, CHANNEL_ID);
-                const context = contextService.getContext(CHANNEL_ID);
-                const message = await MODEL.contextInteract([this.systemContext, ...context], FIRST_MESSAGE_MODEL_NAME);
-
-                contextService.pushWithLimit(this.marvinResponseFactory(message.content), CHANNEL_ID);
-                channel.send(message.content);
+                const wakeUpMessage = await MODEL.interact(WAKE_UP_MESSAGE_PROMPT);
+                channel.send(wakeUpMessage?.content ?? "Wstałem.");
             } catch (error: any) {
                 return exceptionHandler(error, channel)
             };
@@ -195,6 +169,12 @@ export class DiscordServce {
         }
 
         return MODEL.messageFactory(textContent);
+    }
+
+    /** Built per request so the date in the prompt is never stale. */
+    getSystemContext(): Message {
+        const date = new DateService().getFormattedDate();
+        return MODEL.messageFactory(getMarvinMotivationSystemPrompt(date, peopleMap), 'system');
     }
 
     marvinResponseFactory(content: string) {
@@ -330,14 +310,14 @@ export class DiscordServce {
 
                 const userRequest = MODEL.messageFactory(getPerplexityToMarvinResponsePrompt(perplexityResponse.content));
                 assResponse = await MODEL.contextInteract([
-                    this.systemContext,
+                    this.getSystemContext(),
                     ...stripImages(contextService.getContext(channelId)),
                     ...scrapedContext,
                     userRequest,
                 ]);
             } else {
                 assResponse = await MODEL.contextInteract([
-                    this.systemContext,
+                    this.getSystemContext(),
                     ...stripImages(contextService.getContext(channelId)),
                     ...scrapedContext,
                 ]);

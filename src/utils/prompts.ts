@@ -1,6 +1,3 @@
-/** System prompt for fetching a single motivational quote. Used in quotePromptFactory. */
-export const QUOTE_PROMPT = `Podaj mi istniejący motywujący i inspirujący cytat. Odpowiedz tylko nim i autorem. Niczym więcej.`
-
 /**
  * System prompt for the decider model.
  * The decider receives the full channel context and responds with exactly one word: MARVIN or PERPLEXITY.
@@ -128,18 +125,3 @@ export const getBotExchangeExhaustedSystemPrompt = (): string =>
 
 export const getShortReactionSystemPrompt = (): string =>
     `Jesteś Marvinem. Właśnie przeczytałeś ostatnią wiadomość w rozmowie i reagujesz jak prawdziwy człowiek na Discordzie — krótko i bez owijania w bawełnę. Odpowiedz MAKSYMALNIE 8 słowami. Żadnych długich zdań. Możesz użyć "xD", "lol", "no cap", emoji, polskie slangi albo krótką, celną ripostę — jeśli ktoś się w wiadomości usprawiedliwia, kręci albo szuka wymówki, możesz to wytknąć jednym zdaniem. Reaguj na to co napisała osoba — bądź naturalny, jakbyś właśnie to zobaczył i musiałeś zareagować. Nie tłumacz się, nie witaj się, po prostu zareaguj.`;
-
-/**
- * Builds the morning greeting prompt sent as the first user message after bot startup.
- * Instructs Marvin to greet everyone (@here), include today's quote, and share a daily tip.
- *
- * @param quote - Today's motivational quote (fetched by quotePromptFactory)
- */
-export const getFirstMotivionUserMessagePrompt = (quote: string): string => `
-      Zacznij od ogólnego przywitania wszystkich.
-      Przywitaj się z przywołaniem @here.
-      Motywujący cytat na dziś to: ${quote}.
-      Napisz jakąś rekomendowaną akcje, która jest zdrowa i może uczynić nas 1% lepszymi dzisiejszego dnia.
-      Wpleć go w Twoją powitalną wiadomość. Nie pisz, że to cytat, ale załącz go w oryginalnej formie z autorem.
-      Napisz coś żeby zmotywować ludzi na cały dzień.
-    `

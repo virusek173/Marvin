@@ -1,4 +1,3 @@
-import { QUOTE_PROMPT } from "./prompts.js";
 import { Message } from "../services/openai.js";
 
 /** Proxy handler that returns the property value, the property name, or empty string as fallback. */
@@ -91,14 +90,3 @@ export const pushWithLimit = (array: any[], item: any, limit: number = 10) => {
   item && array.push(item);
   return array;
 };
-
-
-/**
- * Builds a prompt for generating a motivational quote that differs from previous ones.
- * Pass the `quotesArray` from index.ts (kept at max 10 entries via pushWithLimit).
- *
- * @param quotesArray - Array of previously used quotes to avoid repetition
- */
-export const quotePromptFactory = (quotesArray: string[]) => `${QUOTE_PROMPT}
-Cytat musi się różnić od podanych cytatów.
-Poprzednie cytaty: ${quotesArray.join("\n,")}`;

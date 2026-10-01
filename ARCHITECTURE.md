@@ -22,28 +22,19 @@ src/
 ## Startup Flow
 
 ```
-index.ts: init()
+index.ts
     │
-    ├── openai.interact(quotePromptFactory(quotesArray))
-    │       ↓ GPT-5 generates quote avoiding previous 10
-    │
-    ├── pushWithLimit(quotesArray, quote)   ← max 10 quotes kept
-    │
-    └── new DiscordServce(quote, withInitMessage)
+    └── new DiscordServce()   ← created once per process start
             │
             ├── new ContextService({})
-            ├── contextService.loadContextFromFile("context.json")
-            ├── MODEL.messageFactory(systemPrompt)  ← system context built
             │
             └── client.login(DISCORD_CLIENT_TOKEN)
                     ↓ "ready" event fires
-                    ├── [withInitMessage=false] → silent restart message
-                    └── [withInitMessage=true]
-                            ↓
-                        MODEL.contextInteract([system, firstUserMessage], FIRST_MESSAGE_MODEL_NAME)
-                            ↓
-                        channel.send(morningGreeting)
+                    ├── contextService.loadContextFromFile("context.json")
+                    └── MODEL.interact(WAKE_UP_MESSAGE_PROMPT) → channel.send(wakeUpMessage)
 ```
+
+The system prompt (with today's date) is built per request in `getSystemContext()`, so the date never goes stale.
 
 ## Message Routing Flow
 
@@ -85,13 +76,11 @@ Discord: user sends message
 ## Cron Schedule
 
 ```
-node-cron: "0 6 * * *" (Europe/Warsaw)
+node-cron: "0 20 * * *" (Europe/Warsaw)
     ↓
-index.ts: init(withInitMessage=true)
+index.ts: checks days since last summary (data/last_summary.json)
     ↓
-client?.destroy()   ← kills previous Discord connection
-    ↓
-[same as Startup Flow above]
+[>= SERVER_SUMMARY_INTERVAL_DAYS] client.sendServerSummary(lastSummaryAt)
 ```
 
 ## Data Models
@@ -107,18 +96,14 @@ interface Message {
 type ContextMap = Record<channelId: string, Message[]>
 // Stored in: context.json (persisted) and ContextService.contextMap (in-memory)
 // Limit: 30 messages per channel (FIFO)
-
-// Quote deduplication
-quotesArray: string[]   // max 10 entries, in index.ts
 ```
 
 ## AI Services Comparison
 
 | Service | Used for | Model | Internet? |
 |---|---|---|---|
-| `OpenAi` (MODEL) | Main responses + morning message | gpt-5-chat-latest | No |
+| `OpenAi` (MODEL) | Main responses, wake-up message, summaries | gpt-5-chat-latest | No |
 | `OpenAi` (decider) | Routing decision only | gpt-5-chat-latest | No |
-| `OpenAi` (openai in index) | Daily quote generation | gpt-5 | No |
 | `Grok` | Alternative (unused in current routing) | — | No |
 | `Perplexity` | Web search queries | — | Yes |
 

@@ -2,7 +2,7 @@
 
 ## What it is
 
-Marvin is a Discord bot that sends a motivational quote every day at 6:00 AM (Warsaw timezone) and responds to user messages throughout the day. It uses multiple AI models — OpenAI (GPT-5) as the primary, Grok as an alternative, and Perplexity for questions that require internet access.
+Marvin is a Discord bot that responds to user messages and posts a periodic server summary. It uses multiple AI models — OpenAI (GPT-5) as the primary, Grok as an alternative, and Perplexity for questions that require internet access.
 
 The server also has two other bots with their own personas: [Mugda](#mugda) and [Wibot](#wibot) — see below.
 
@@ -26,7 +26,7 @@ npm test              # Jest tests
 | Variable | Description |
 |---|---|
 | `DISCORD_CLIENT_TOKEN` | Discord bot token (from Discord Developer Portal) |
-| `CHANNEL_ID` | Channel ID where the bot sends morning quotes |
+| `CHANNEL_ID` | Channel ID where the bot posts its wake-up message after a restart |
 | `BOTS_CHANNEL_ID` | Channel ID (bots conversation channel) where the periodic server summary is posted |
 | `SUMMARY_EXCLUDED_CHANNEL_IDS` | Comma-separated channel IDs to exclude from the periodic server summary (e.g. dev/issue-tracker channels) |
 | `MARVIN_ID` | Bot's Discord user ID — used to detect mentions |
@@ -59,15 +59,13 @@ Informs about "niedziela handlowa" (trading/non-trading Sundays in Poland — da
 ## Architecture — Message Flow
 
 ```
-[node-cron 6:00 Warsaw]
+[process start]
         ↓
-    index.ts → OpenAi.interact(quotePromptFactory) → generates quote
+    index.ts → new DiscordServce()  (once per process)
         ↓
-    new DiscordServce(quote)
+    client "ready" → MODEL.interact(WAKE_UP_MESSAGE_PROMPT)
         ↓
-    client "ready" → MODEL.contextInteract([system, firstUserMessage])
-        ↓
-    channel.send(message)  ← morning greeting message
+    channel(CHANNEL_ID).send(message)  ← wake-up message
 
 
 [Discord: user sends a message]
@@ -100,14 +98,14 @@ Informs about "niedziela handlowa" (trading/non-trading Sundays in Poland — da
         ↓
     MODEL.contextInteract([getServerSummarySystemPrompt(), combinedText])
         ↓
-    channel(BOTS_CHANNEL_ID).send(digest)  ← runs independently of WITH_CRON
+    channel(BOTS_CHANNEL_ID).send(digest)
 ```
 
 ## Key Files
 
 | File | Role |
 |---|---|
-| `src/index.ts` | Entry point — cron + initialization |
+| `src/index.ts` | Entry point — client startup + summary cron |
 | `src/services/discord.ts` | Main bot logic — message routing |
 | `src/services/context.ts` | Per-channel conversation memory (max 30 messages) |
 | `src/services/openai.ts` | OpenAI API wrapper — `interact()` and `contextInteract()` |
@@ -115,7 +113,7 @@ Informs about "niedziela handlowa" (trading/non-trading Sundays in Poland — da
 | `src/services/perplexity.ts` | Perplexity API wrapper (internet access) |
 | `src/utils/prompts.ts` | All system prompts and prompt factories |
 | `src/utils/helpers.ts` | Utilities: `pushWithLimit`, `mapGlobalNameNameToRealName`, `exceptionHandler` |
-| `src/utils/consts.ts` | Model name constants: `DEFAULT_MODEL_NAME`, `QUOTE_MODEL_NAME` |
+| `src/utils/consts.ts` | Model name constants: `DEFAULT_MODEL_NAME`, `DECIDER_MODEL_NAME`, etc. |
 
 ## How to Add a New AI Service
 
@@ -127,13 +125,12 @@ Informs about "niedziela handlowa" (trading/non-trading Sundays in Poland — da
 ## Gotchas
 
 - **Context limit:** `ContextService.pushWithLimit` stores max **30 messages** per channel (FIFO). Changing this affects memory and API cost.
-- **Quote deduplication:** `quotesArray` keeps max 10 previous quotes to prevent repetition.
 - **Spontaneous chat features (`discord.ts`):** on every non-mentioned message there's a `SHORT_REACTION_CHANCE` (1%) roll for a short AI reaction, cooldown-gated by `SHORT_REACTION_COOLDOWN` (30 messages). There is no more per-message chance for a long spontaneous reply — that feature was replaced by the periodic server summary below.
-- **Periodic server summary (`sendServerSummary`):** every day at 20:00 Warsaw time, a cron in `index.ts` checks how many days have passed since the last summary (persisted in `data/last_summary.json`, not an in-memory counter — survives restarts and `docker compose up --build` thanks to the `marvin_data` volume). Once `SERVER_SUMMARY_INTERVAL_DAYS` days (default 3) have elapsed, it calls `client.sendServerSummary()`, which digests recent messages from every tracked channel and posts the result to the channel configured via `BOTS_CHANNEL_ID` in `.env`. This cron is scheduled unconditionally, independent of `WITH_CRON` (which only gates the daily 6 AM quote). `context.json` is now also written to `data/context.json`, so conversation memory survives restarts and rebuilds via the same `marvin_data` volume.
+- **Periodic server summary (`sendServerSummary`):** every day at 20:00 Warsaw time, a cron in `index.ts` checks how many days have passed since the last summary (persisted in `data/last_summary.json`, not an in-memory counter — survives restarts and `docker compose up --build` thanks to the `marvin_data` volume). Once `SERVER_SUMMARY_INTERVAL_DAYS` days (default 3) have elapsed, it calls `client.sendServerSummary()`, which digests recent messages from every tracked channel and posts the result to the channel configured via `BOTS_CHANNEL_ID` in `.env`. `context.json` is now also written to `data/context.json`, so conversation memory survives restarts and rebuilds via the same `marvin_data` volume.
 - **`MODEL` is a constant** in `discord.ts` pointing to the `openai` instance. To switch the main model, change the `MODEL` object or the value in `consts.ts`.
 - **`decider`** uses a separate `OpenAi` instance (not Grok) — its model can be changed independently.
 - **`data/context.json`** — conversation history file, persisted via the `marvin_data` Docker volume. Loaded on startup, saved after every bot reply. Delete it to reset Marvin's memory.
-- **`WITH_INIT_MESSAGE = false`** in `index.ts` — when `false`, the bot starts without sending a morning message (silent restart mode).
+- **System prompt date:** built per request in `DiscordServce.getSystemContext()` (the client is no longer re-created daily, so it must not be cached).
 - **Discord reply limit:** responses are trimmed to 1950 characters (`substring(0, 1950)`).
 
 ## Discord globalName → Real Name Mapping
