@@ -24,13 +24,15 @@ import {
 } from "../utils/prompts.js";
 import { DECIDER_MODEL_NAME, SHORT_REACTION_MODEL_NAME, SERVER_SUMMARY_MODEL_NAME } from "../utils/consts.js";
 import { extractUrls, scrapeUrl } from "./scraper.js";
+import { MessageArchive, getExcludedChannelIds } from "./history/archive.js";
+import { formatImageDescriptions } from "./history/mapper.js";
+import { INTERNET_NOTICE, linksNotice } from "./history/technical.js";
 
 dotenv.config();
 const {
     DISCORD_CLIENT_TOKEN,
     CHANNEL_ID,
     BOTS_CHANNEL_ID,
-    SUMMARY_EXCLUDED_CHANNEL_IDS,
     MARVIN_ID,
     MARVIN_USERNAME,
     HOMAR_ID,
@@ -59,10 +61,7 @@ const peopleMap = {
     "WibotId": WIBOT_ID || '',
 }
 
-const EXCLUDED_SUMMARY_CHANNEL_IDS = (SUMMARY_EXCLUDED_CHANNEL_IDS || '')
-    .split(',')
-    .map(id => id.trim())
-    .filter(Boolean);
+const EXCLUDED_CHANNEL_IDS = getExcludedChannelIds();
 const openai = new OpenAi();
 const grok = new Grok();
 const decider = new OpenAi();
@@ -90,10 +89,16 @@ const BOT_EXHAUSTED_REPLY = "Mam Cię dość. Nie pisz do mnie więcej.";
 export class DiscordServce {
     private client: any;
     private contextService: ContextService;
+    private archive: MessageArchive;
 
     constructor() {
         const contextService = new ContextService({})
         this.contextService = contextService;
+        this.archive = MessageArchive.open({
+            selfId: MARVIN_ID,
+            selfUsername: MARVIN_USERNAME,
+            excludedChannelIds: EXCLUDED_CHANNEL_IDS,
+        });
 
         const clientService = new ClientService();
         this.client = clientService.getClient();
@@ -113,10 +118,15 @@ export class DiscordServce {
         });
 
         this.client.on("messageCreate", async (message: any) => {
-            if (message.author.username === MARVIN_USERNAME) return;
+            if (message.author.username === MARVIN_USERNAME) {
+                this.archive.archive(message);
+                return;
+            }
 
             const channelId = message?.channelId;
-            const userResponse = await this.userResponseFactory(message);
+            const imageDescriptions = await this.describeImages(message);
+            this.archive.archive(message, imageDescriptions);
+            const userResponse = await this.userResponseFactory(message, imageDescriptions);
             contextService.pushWithLimit(userResponse, channelId);
 
             const isMentioned = message.content.includes(MARVIN_ID) ||
@@ -149,26 +159,25 @@ export class DiscordServce {
      * Prepends the sender's real name (from mapGlobalNameNameToRealName) to the content.
      * Example: "zoltymason: hej co słychać" → {role: 'user', content: 'Mason: hej co słychać'}
      */
-    async userResponseFactory(message: any) {
+    async userResponseFactory(message: any, imageDescriptions?: string[]) {
         const realName = mapGlobalNameNameToRealName[message.author.globalName];
         const timestamp = new DateService(message.createdAt).getFormattedDateTime();
         const textContent = `[${timestamp}] ${realName}: ${message.content}`;
 
-        const imageAttachments = [...(message.attachments?.values() ?? [])].filter(
-            (att: any) => att.contentType?.startsWith('image/')
-        );
-
-        if (imageAttachments.length > 0) {
-            const descriptions = await Promise.all(
-                imageAttachments.map((att: any) => MODEL.describeImage(att.url))
-            );
-            const imageText = descriptions.map((desc, i) =>
-                imageAttachments.length > 1 ? `[Obraz ${i + 1}: ${desc}]` : `[Obraz: ${desc}]`
-            ).join(' ');
-            return MODEL.messageFactory(`${textContent} ${imageText}`);
+        const descriptions = imageDescriptions ?? await this.describeImages(message);
+        if (descriptions.length > 0) {
+            return MODEL.messageFactory(`${textContent} ${formatImageDescriptions(descriptions)}`);
         }
 
         return MODEL.messageFactory(textContent);
+    }
+
+    /** One text description per image attachment (vision model); empty array when there are no images. */
+    async describeImages(message: any): Promise<string[]> {
+        const imageAttachments = [...(message.attachments?.values() ?? [])].filter(
+            (att: any) => att.contentType?.startsWith('image/')
+        );
+        return Promise.all(imageAttachments.map((att: any) => MODEL.describeImage(att.url)));
     }
 
     /** Built per request so the date in the prompt is never stale. */
@@ -216,7 +225,7 @@ export class DiscordServce {
 
         try {
             const combinedText = Object.entries(this.contextService.getContextMap())
-                .filter(([channelId]) => !EXCLUDED_SUMMARY_CHANNEL_IDS.includes(channelId))
+                .filter(([channelId]) => !EXCLUDED_CHANNEL_IDS.includes(channelId))
                 .flatMap(([, messages]) => stripImages(messages))
                 .map(m => (typeof m.content === 'string' ? m.content : ''))
                 .filter(Boolean)
@@ -290,7 +299,7 @@ export class DiscordServce {
             const urls = [...new Set([...currentUrls, ...historyUrls])].slice(0, 5);
             const scrapedParts = (await Promise.all(urls.map(scrapeUrl))).filter(Boolean) as string[];
             if (scrapedParts.length > 0) {
-                message.reply(`Zaglądam do ${scrapedParts.length > 1 ? 'linków' : 'linka'}. 🔗`);
+                message.reply(linksNotice(scrapedParts.length));
                 message.channel.sendTyping();
             }
             const scrapedContext: Message[] = scrapedParts.length > 0
@@ -303,7 +312,7 @@ export class DiscordServce {
             ], DECIDER_MODEL_NAME);
 
             if (deciderResponse.content.includes('PERPLEXITY')) {
-                message.reply(`To pytanie mnie przerosło. \nZaglądam do Internetu. 🌐`);
+                message.reply(INTERNET_NOTICE);
                 const { message: perplexityResponse } = await perplexity.contextInteract(stripImages(contextService.getContext(channelId)));
                 console.log(`perplexityResponse: ${perplexityResponse.content}`);
                 message.channel.sendTyping();

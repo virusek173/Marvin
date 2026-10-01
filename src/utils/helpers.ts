@@ -1,4 +1,5 @@
 import { Message } from "../services/openai.js";
+import { ERROR_MESSAGE_PREFIX } from "../services/history/technical.js";
 
 /** Proxy handler that returns the property value, the property name, or empty string as fallback. */
 export const proxyHandler = {
@@ -66,7 +67,7 @@ export const parseContextTimestamp = (content: unknown): Date | null => {
 export const exceptionHandler = (error: any, message: any) => {
   console.log("err: ", error?.message);
 
-  const text = `Wywaliłem się... POWÓD: ${error?.message?.substring(0, 1800)}\nZapytaj mnie proszę ponownie.`;
+  const text = `${ERROR_MESSAGE_PREFIX} POWÓD: ${error?.message?.substring(0, 1800)}\nZapytaj mnie proszę ponownie.`;
   const payload = { content: text, files: ['assets/mila_kawka.png'] };
 
   const send = message.reply?.bind(message) ?? message.send?.bind(message);
