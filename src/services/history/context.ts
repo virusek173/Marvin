@@ -1,7 +1,7 @@
 import { HistoryDb, StoredMessage } from "./db.js";
 import { ContextService } from "../context.js";
 import { Message } from "../openai.js";
-import { DateService } from "../date.js";
+import { formatWarsaw } from "./time.js";
 import { mapGlobalNameNameToRealName } from "../../utils/helpers.js";
 import { historyLog } from "./log.js";
 
@@ -14,7 +14,7 @@ export const renderBody = (m: Pick<StoredMessage, "content" | "embedsText" | "at
 /** "[YYYY.MM.DD HH:MM] Name: text" — the line format the model has always seen in its context. */
 export const renderLine = (m: StoredMessage, selfId?: string): string => {
     const name = m.authorId === selfId ? "Marvin" : mapGlobalNameNameToRealName[m.authorName];
-    return `[${new DateService(m.createdAt).getFormattedDateTime()}] ${name}: ${renderBody(m)}`;
+    return `[${formatWarsaw(m.createdAt)}] ${name}: ${renderBody(m)}`;
 };
 
 export const toContextMessage = (m: StoredMessage, selfId?: string): Message => ({
