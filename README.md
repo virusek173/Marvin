@@ -23,7 +23,8 @@ src/
 ├── index.ts               Entry point — client startup, summary cron
 ├── services/
 │   ├── discord.ts         Bot logic — message handling and AI routing
-│   ├── context.ts         Per-channel conversation memory (max 30 messages)
+│   ├── context.ts         In-memory FIFO context (fallback only)
+│   ├── history/           SQLite message archive: live write, backfill, context, read-only search tools
 │   ├── openai.ts          OpenAI API wrapper (primary AI + decider)
 │   ├── grok.ts            Grok/X.ai API wrapper
 │   ├── perplexity.ts      Perplexity API wrapper (real-time web search)
@@ -40,7 +41,8 @@ src/
 
 1. **Every 2 days at 20:00 (Warsaw)** — Marvin posts a digest of recent server activity to the bots channel
 2. **When mentioned** (`@Marvin` or reply) — Marvin reads the conversation context, decides whether the question needs internet access (Perplexity) or can be answered from knowledge (OpenAI/Grok), and replies accordingly
-3. **All messages** — stored in per-channel context (last 30 messages) persisted in `context.json`
+3. **All messages** — archived in a local SQLite database (`data/history.db`); the last 30 messages of a channel are the conversation context
+4. **History questions** ("what did Jacek write about the holiday?") — Marvin searches the archive with read-only tools (full-text search, time ranges, surrounding messages). Set `HISTORY_SYNC_ENABLED=true` to import the whole server history; the bot role must not have Manage Messages, Manage Channels, Manage Threads, Kick, Ban or Administrator
 
 ## Adding a New AI Service
 

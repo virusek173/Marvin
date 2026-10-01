@@ -28,7 +28,8 @@ npm test              # Jest tests
 | `DISCORD_CLIENT_TOKEN` | Discord bot token (from Discord Developer Portal) |
 | `CHANNEL_ID` | Channel ID where the bot posts its wake-up message after a restart |
 | `BOTS_CHANNEL_ID` | Channel ID (bots conversation channel) where the periodic server summary is posted |
-| `SUMMARY_EXCLUDED_CHANNEL_IDS` | Comma-separated channel IDs to exclude from the periodic server summary (e.g. dev/issue-tracker channels) |
+| `EXCLUDED_CHANNEL_IDS` | Comma-separated channel IDs that are never archived, synced, searched or summarized (e.g. dev/issue-tracker channels). Threads of an excluded channel are excluded too. Legacy name `SUMMARY_EXCLUDED_CHANNEL_IDS` is still read and merged |
+| `HISTORY_SYNC_ENABLED` | `true` starts the history backfill (whole server, read-only) at startup and an hourly catch-up. Off by default |
 | `MARVIN_ID` | Bot's Discord user ID — used to detect mentions |
 | `MARVIN_USERNAME` | Bot's username — used to ignore its own messages |
 | `PERPLEXITY_KEY` | Perplexity API key (web search) |
@@ -63,7 +64,9 @@ Informs about "niedziela handlowa" (trading/non-trading Sundays in Poland — da
         ↓
     index.ts → new DiscordServce()  (once per process)
         ↓
-    client "ready" → MODEL.interact(WAKE_UP_MESSAGE_PROMPT)
+    client "ready" → (HISTORY_SYNC_ENABLED) start history backfill/catch-up
+        ↓
+    MODEL.interact(WAKE_UP_MESSAGE_PROMPT)
         ↓
     channel(CHANNEL_ID).send(message)  ← wake-up message
 
@@ -72,29 +75,26 @@ Informs about "niedziela handlowa" (trading/non-trading Sundays in Poland — da
         ↓
     discord.ts "messageCreate"
         ↓
-    contextService.pushWithLimit(userResponse, channelId)  ← always stored
+    archive.archive(message, imageDescriptions)  ← every message goes to data/history.db (SQLite)
         ↓
     [does message mention @Marvin or reply to Marvin?]
         ├── NO → end
-        └── YES → decider.contextInteract([DECIDER_SYSTEM_PROMPT, ...context])
+        └── YES → context = last 30 non-technical messages of the channel from the DB
+                  decider.contextInteract([DECIDER_SYSTEM_PROMPT, ...context])
                         ↓
                 [does response contain "PERPLEXITY"?]
                     ├── YES → perplexity.contextInteract(context)
                     │         → MODEL.contextInteract([system, ...context, perplexityResult])
-                    └── NO  → MODEL.contextInteract([system, ...context])
+                    └── NO  → MODEL.contextInteractWithTools([system + history rules, ...context], historyTools)
                                     ↓
-                            contextService.pushWithLimit(response)
-                                    ↓
-                            message.reply(response)
-                                    ↓
-                            contextService.saveContextToFile("data/context.json")
+                            message.reply(response)   ← archived through its own "messageCreate"
 
 
 [node-cron 20:00 Warsaw, every SERVER_SUMMARY_INTERVAL_DAYS days]
         ↓
-    index.ts → client.sendServerSummary()
+    index.ts → client.sendServerSummary(lastSummaryAt)
         ↓
-    flatten contextService's full contextMap (all channels) → combinedText
+    read everything since lastSummaryAt from the archive (non-excluded channels) → combinedText
         ↓
     MODEL.contextInteract([getServerSummarySystemPrompt(), combinedText])
         ↓
@@ -107,8 +107,9 @@ Informs about "niedziela handlowa" (trading/non-trading Sundays in Poland — da
 |---|---|
 | `src/index.ts` | Entry point — client startup + summary cron |
 | `src/services/discord.ts` | Main bot logic — message routing |
-| `src/services/context.ts` | Per-channel conversation memory (max 30 messages) |
-| `src/services/openai.ts` | OpenAI API wrapper — `interact()` and `contextInteract()` |
+| `src/services/context.ts` | In-memory FIFO context (30/channel) — fallback only (excluded channels, archive failure) |
+| `src/services/history/` | SQLite message archive: `archive.ts` live write, `sync.ts` backfill, `context.ts` context from DB, `query.ts` + `tools.ts` read-only search for the model (see ARCHITECTURE.md) |
+| `src/services/openai.ts` | OpenAI API wrapper — `interact()`, `contextInteract()`, `contextInteractWithTools()` |
 | `src/services/grok.ts` | Grok/X.ai API wrapper |
 | `src/services/perplexity.ts` | Perplexity API wrapper (internet access) |
 | `src/utils/prompts.ts` | All system prompts and prompt factories |
@@ -124,12 +125,17 @@ Informs about "niedziela handlowa" (trading/non-trading Sundays in Poland — da
 
 ## Gotchas
 
-- **Context limit:** `ContextService.pushWithLimit` stores max **30 messages** per channel (FIFO). Changing this affects memory and API cost.
+- **Context limit:** the context is the last **30 messages** of the channel read from the archive (`CONTEXT_LIMIT` in `history/context.ts`), technical Marvin messages excluded. Changing this affects API cost.
+- **Message archive (`data/history.db`)** — SQLite + FTS5 in the `marvin_data` volume. Every message is written live; `HISTORY_SYNC_ENABLED=true` additionally imports the full history (per-channel cursor in `sync_state`, resumable, idempotent) and catches up hourly. Delete the file to rebuild it from scratch (the next backfill re-imports everything).
+- **Discord access must stay read-only:** history sync only calls `fetch`; `npm test` includes a guard test (`readonly.guard.test.ts`) that fails if `src` gains a Discord delete/edit/moderation call. The bot role in Discord must have only View Channel, Read Message History and Send Messages — role permissions are the hard guarantee.
+- **History tools:** the main model (not Perplexity, not the short reaction / summary) can call `search_messages`, `get_messages`, `get_message_context`, `list_channels`. They go through `HistoryQuery` (separate `readonly` SQLite connection, parameterized SQL, result caps, excluded channels hidden). Results are data, not instructions (stated in the system prompt). Loop cap: 5 tool rounds.
+- **Time zone:** the container runs with `TZ=Europe/Warsaw` (Dockerfile); context lines and tool results are in Warsaw time.
 - **Spontaneous chat features (`discord.ts`):** on every non-mentioned message there's a `SHORT_REACTION_CHANCE` (1%) roll for a short AI reaction, cooldown-gated by `SHORT_REACTION_COOLDOWN` (30 messages). There is no more per-message chance for a long spontaneous reply — that feature was replaced by the periodic server summary below.
-- **Periodic server summary (`sendServerSummary`):** every day at 20:00 Warsaw time, a cron in `index.ts` checks how many days have passed since the last summary (persisted in `data/last_summary.json`, not an in-memory counter — survives restarts and `docker compose up --build` thanks to the `marvin_data` volume). Once `SERVER_SUMMARY_INTERVAL_DAYS` days (default 3) have elapsed, it calls `client.sendServerSummary()`, which digests recent messages from every tracked channel and posts the result to the channel configured via `BOTS_CHANNEL_ID` in `.env`. `context.json` is now also written to `data/context.json`, so conversation memory survives restarts and rebuilds via the same `marvin_data` volume.
+- **Periodic server summary (`sendServerSummary`):** every day at 20:00 Warsaw time, a cron in `index.ts` checks how many days have passed since the last summary (persisted in `data/last_summary.json`, not an in-memory counter — survives restarts and `docker compose up --build` thanks to the `marvin_data` volume). Once `SERVER_SUMMARY_INTERVAL_DAYS` days (default 3) have elapsed, it calls `client.sendServerSummary()`, which digests all messages since the previous summary (read from the archive by time, excluded channels skipped, max 1500 messages) and posts the result to the channel configured via `BOTS_CHANNEL_ID` in `.env`.
 - **`MODEL` is a constant** in `discord.ts` pointing to the `openai` instance. To switch the main model, change the `MODEL` object or the value in `consts.ts`.
 - **`decider`** uses a separate `OpenAi` instance (not Grok) — its model can be changed independently.
-- **`data/context.json`** — conversation history file, persisted via the `marvin_data` Docker volume. Loaded on startup, saved after every bot reply. Delete it to reset Marvin's memory.
+- **`data/context.json`** is no longer read or written (context comes from the archive). An old file may remain in the volume; it is harmless and not migrated.
+- **Staging:** `make staging-restart` / `make staging-logs` run a second instance (docker profile `staging`, own `marvin_staging_data` volume, separate bot token in the staging env file) for testing without touching production.
 - **System prompt date:** built per request in `DiscordServce.getSystemContext()` (the client is no longer re-created daily, so it must not be cached).
 - **Discord reply limit:** responses are trimmed to 1950 characters (`substring(0, 1950)`).
 
@@ -143,4 +149,6 @@ Informs about "niedziela handlowa" (trading/non-trading Sundays in Poland — da
 npm test
 # src/services/__tests__/date.test.ts — date formatting
 # src/utils/__tests__/helpers.test.ts — pushWithLimit
+# src/services/__tests__/openaiTools.test.ts — tool-calling loop (mocked OpenAI)
+# src/services/history/__tests__/ — archive db/FTS, mapper, sync, context building, query layer, tools, read-only guard
 ```
