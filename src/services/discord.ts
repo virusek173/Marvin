@@ -27,6 +27,9 @@ import { extractUrls, scrapeUrl } from "./scraper.js";
 import { MessageArchive, getExcludedChannelIds } from "./history/archive.js";
 import { formatImageDescriptions } from "./history/mapper.js";
 import { INTERNET_NOTICE, linksNotice } from "./history/technical.js";
+import { HistorySync } from "./history/sync.js";
+import { DiscordJsSource } from "./history/discordSource.js";
+import { historyLog } from "./history/log.js";
 
 dotenv.config();
 const {
@@ -90,6 +93,7 @@ export class DiscordServce {
     private client: any;
     private contextService: ContextService;
     private archive: MessageArchive;
+    private historySync: HistorySync | null = null;
 
     constructor() {
         const contextService = new ContextService({})
@@ -109,6 +113,7 @@ export class DiscordServce {
                 console.log(`Logged in as ${this.client.user.tag}!`);
 
                 contextService.loadContextFromFile("data/context.json");
+                this.startHistorySync();
 
                 const wakeUpMessage = await MODEL.interact(WAKE_UP_MESSAGE_PROMPT);
                 channel.send(wakeUpMessage?.content ?? "Wstałem.");
@@ -152,6 +157,22 @@ export class DiscordServce {
         });
 
         this.client.login(DISCORD_CLIENT_TOKEN);
+    }
+
+    /** Backfill/catch-up reads the whole server history, so it is opt-in via HISTORY_SYNC_ENABLED=true. */
+    private startHistorySync() {
+        const db = this.archive.database;
+        if (!db) return;
+        if (process.env.HISTORY_SYNC_ENABLED !== "true") {
+            historyLog.info("synchronizacja historii wyłączona (ustaw HISTORY_SYNC_ENABLED=true, żeby włączyć)");
+            return;
+        }
+        this.historySync = new HistorySync(db, new DiscordJsSource(this.client), {
+            excludedChannelIds: EXCLUDED_CHANNEL_IDS,
+            selfId: MARVIN_ID,
+            selfUsername: MARVIN_USERNAME,
+        });
+        this.historySync.start();
     }
 
     /**
@@ -344,6 +365,7 @@ export class DiscordServce {
     }
 
     destroy() {
+        this.historySync?.stop();
         this.client.destroy();
     }
 }

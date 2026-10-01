@@ -79,10 +79,20 @@ const INSERT_COLUMNS = `(id, channel_id, parent_id, author_id, author_name, is_b
     VALUES (@id, @channelId, @parentId, @authorId, @authorName, @isBot, @content, @embedsText,
     @attachmentsText, @replyToId, @type, @isTechnical, @createdAt)`;
 
+export interface SyncState {
+    cursor: string | null;
+    lastAttemptAt: number | null;
+    lastSuccessAt: number | null;
+    lastError: string | null;
+}
+
 export class HistoryDb {
     readonly db: Database.Database;
     private upsertLiveStmt: Database.Statement;
     private upsertChannelStmt: Database.Statement;
+    private insertIgnoreStmt: Database.Statement;
+    private upsertCursorStmt: Database.Statement;
+    private writePageTx: (channelId: string, rows: ArchiveRow[], cursor: string | null) => number;
 
     constructor(file: string) {
         if (file !== ":memory:") fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -104,6 +114,54 @@ export class HistoryDb {
             INSERT INTO channels (id, name, parent_id, updated_at) VALUES (@id, @name, @parentId, @updatedAt)
             ON CONFLICT(id) DO UPDATE SET name = excluded.name, parent_id = excluded.parent_id,
                 updated_at = excluded.updated_at`);
+        this.insertIgnoreStmt = this.db.prepare(`INSERT OR IGNORE INTO messages ${INSERT_COLUMNS}`);
+        this.upsertCursorStmt = this.db.prepare(`
+            INSERT INTO sync_state (channel_id, cursor, last_attempt_at, last_success_at, last_error)
+            VALUES (@channelId, @cursor, @now, @now, NULL)
+            ON CONFLICT(channel_id) DO UPDATE SET cursor = excluded.cursor,
+                last_success_at = excluded.last_success_at, last_error = NULL`);
+        this.writePageTx = this.db.transaction((channelId: string, rows: ArchiveRow[], cursor: string | null) => {
+            let inserted = 0;
+            for (const row of rows) inserted += this.insertIgnoreStmt.run(toParams(row)).changes;
+            if (cursor !== null) {
+                const current = this.getSyncState(channelId)?.cursor;
+                const furthest = current && BigInt(current) > BigInt(cursor) ? current : cursor;
+                this.upsertCursorStmt.run({ channelId, cursor: furthest, now: Date.now() });
+            }
+            return inserted;
+        });
+    }
+
+    /**
+     * Inserts a page of fetched messages (existing ids are left untouched) and, when a cursor is given, advances
+     * the channel's cursor in the same transaction. The cursor never moves backwards. Returns the new row count.
+     */
+    writePage(channelId: string, rows: ArchiveRow[], cursor: string | null): number {
+        return this.writePageTx(channelId, rows, cursor);
+    }
+
+    getSyncState(channelId: string): SyncState | undefined {
+        const r = this.db
+            .prepare("SELECT cursor, last_attempt_at, last_success_at, last_error FROM sync_state WHERE channel_id = ?")
+            .get(channelId) as any;
+        return r && { cursor: r.cursor, lastAttemptAt: r.last_attempt_at, lastSuccessAt: r.last_success_at, lastError: r.last_error };
+    }
+
+    markAttempt(channelId: string): void {
+        this.db.prepare(`INSERT INTO sync_state (channel_id, last_attempt_at) VALUES (?, ?)
+            ON CONFLICT(channel_id) DO UPDATE SET last_attempt_at = excluded.last_attempt_at`).run(channelId, Date.now());
+    }
+
+    markSuccess(channelId: string): void {
+        this.db.prepare(`INSERT INTO sync_state (channel_id, last_success_at) VALUES (?, ?)
+            ON CONFLICT(channel_id) DO UPDATE SET last_success_at = excluded.last_success_at, last_error = NULL`)
+            .run(channelId, Date.now());
+    }
+
+    markError(channelId: string, error: string): void {
+        this.db.prepare(`INSERT INTO sync_state (channel_id, last_attempt_at, last_error) VALUES (?, ?, ?)
+            ON CONFLICT(channel_id) DO UPDATE SET last_error = excluded.last_error`)
+            .run(channelId, Date.now(), error.substring(0, 1000));
     }
 
     insertLive(row: ArchiveRow): void {
