@@ -79,6 +79,33 @@ const INSERT_COLUMNS = `(id, channel_id, parent_id, author_id, author_name, is_b
     VALUES (@id, @channelId, @parentId, @authorId, @authorName, @isBot, @content, @embedsText,
     @attachmentsText, @replyToId, @type, @isTechnical, @createdAt)`;
 
+export interface StoredMessage {
+    id: string;
+    channelId: string;
+    authorId: string;
+    authorName: string;
+    isBot: boolean;
+    content: string;
+    embedsText: string;
+    attachmentsText: string;
+    createdAt: number;
+}
+
+const STORED_COLUMNS = `id, channel_id, author_id, author_name, is_bot, content, embeds_text, attachments_text, created_at`;
+const HAS_TEXT = `(content != '' OR embeds_text != '' OR attachments_text != '')`;
+
+const toStored = (r: any): StoredMessage => ({
+    id: r.id,
+    channelId: r.channel_id,
+    authorId: r.author_id,
+    authorName: r.author_name,
+    isBot: !!r.is_bot,
+    content: r.content,
+    embedsText: r.embeds_text,
+    attachmentsText: r.attachments_text,
+    createdAt: r.created_at,
+});
+
 export interface SyncState {
     cursor: string | null;
     lastAttemptAt: number | null;
@@ -170,6 +197,34 @@ export class HistoryDb {
 
     upsertChannel(id: string, name: string | null, parentId: string | null): void {
         this.upsertChannelStmt.run({ id, name, parentId, updatedAt: Date.now() });
+    }
+
+    hasMessage(id: string): boolean {
+        return !!this.db.prepare("SELECT 1 FROM messages WHERE id = ?").get(id);
+    }
+
+    /** Newest `limit` non-technical messages of a channel, oldest first. */
+    getRecentForContext(channelId: string, limit: number): StoredMessage[] {
+        const rows = this.db
+            .prepare(`SELECT ${STORED_COLUMNS} FROM messages
+                WHERE channel_id = ? AND is_technical = 0 AND ${HAS_TEXT}
+                ORDER BY created_at DESC, CAST(id AS INTEGER) DESC LIMIT ?`)
+            .all(channelId, limit);
+        return rows.map(toStored).reverse();
+    }
+
+    /** Newest `limit` non-technical messages newer than `sinceMs` outside the excluded channels, oldest first. */
+    getSince(sinceMs: number, excludedChannelIds: string[], limit: number): StoredMessage[] {
+        const marks = excludedChannelIds.map(() => "?").join(",");
+        const notExcluded = excludedChannelIds.length
+            ? `AND channel_id NOT IN (${marks}) AND (parent_id IS NULL OR parent_id NOT IN (${marks}))`
+            : "";
+        const rows = this.db
+            .prepare(`SELECT ${STORED_COLUMNS} FROM messages
+                WHERE created_at > ? AND is_technical = 0 AND ${HAS_TEXT} ${notExcluded}
+                ORDER BY created_at DESC, CAST(id AS INTEGER) DESC LIMIT ?`)
+            .all(sinceMs, ...excludedChannelIds, ...excludedChannelIds, limit);
+        return rows.map(toStored).reverse();
     }
 
     countMessages(): number {

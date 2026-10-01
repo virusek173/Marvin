@@ -26,7 +26,8 @@ import { DECIDER_MODEL_NAME, SHORT_REACTION_MODEL_NAME, SERVER_SUMMARY_MODEL_NAM
 import { extractUrls, scrapeUrl } from "./scraper.js";
 import { MessageArchive, getExcludedChannelIds } from "./history/archive.js";
 import { formatImageDescriptions } from "./history/mapper.js";
-import { INTERNET_NOTICE, linksNotice } from "./history/technical.js";
+import { INTERNET_NOTICE, linksNotice, isTechnicalMarvinContent } from "./history/technical.js";
+import { HistoryContext, renderLine } from "./history/context.js";
 import { HistorySync } from "./history/sync.js";
 import { DiscordJsSource } from "./history/discordSource.js";
 import { historyLog } from "./history/log.js";
@@ -75,6 +76,8 @@ const SHORT_REACTION_COOLDOWN = 30;
 let shortReactionCooldownCounter = 0;
 const botExchangeCounters = new Map<string, number>();
 const BOT_EXCHANGE_LIMIT = 2;
+const SERVER_SUMMARY_FALLBACK_DAYS = 3;
+const SERVER_SUMMARY_MAX_MESSAGES = 1500;
 const BOT_EXHAUSTED_REPLY = "Mam Cię dość. Nie pisz do mnie więcej.";
 
 /**
@@ -84,25 +87,26 @@ const BOT_EXHAUSTED_REPLY = "Mam Cię dość. Nie pisz do mnie więcej.";
  * - Routing incoming messages to the appropriate AI service (MARVIN or PERPLEXITY)
  *
  * Message routing logic:
- * 1. All non-bot messages are stored in context (ContextService)
+ * 1. Every message is archived in the SQLite history; the context is read back from it (ContextService is only an in-memory fallback)
  * 2. If the message mentions Marvin (@Marvin or reply), the decider model classifies it
  * 3. PERPLEXITY: fetches web data first, then asks MODEL to rephrase the result
  * 4. MARVIN: answers directly using conversation context + system prompt
  */
 export class DiscordServce {
     private client: any;
-    private contextService: ContextService;
+    private fallbackContext: ContextService;
+    private historyContext: HistoryContext;
     private archive: MessageArchive;
     private historySync: HistorySync | null = null;
 
     constructor() {
-        const contextService = new ContextService({})
-        this.contextService = contextService;
+        this.fallbackContext = new ContextService({});
         this.archive = MessageArchive.open({
             selfId: MARVIN_ID,
             selfUsername: MARVIN_USERNAME,
             excludedChannelIds: EXCLUDED_CHANNEL_IDS,
         });
+        this.historyContext = new HistoryContext(this.archive.database, this.fallbackContext, EXCLUDED_CHANNEL_IDS, MARVIN_ID);
 
         const clientService = new ClientService();
         this.client = clientService.getClient();
@@ -112,7 +116,6 @@ export class DiscordServce {
             try {
                 console.log(`Logged in as ${this.client.user.tag}!`);
 
-                contextService.loadContextFromFile("data/context.json");
                 this.startHistorySync();
 
                 const wakeUpMessage = await MODEL.interact(WAKE_UP_MESSAGE_PROMPT);
@@ -125,6 +128,7 @@ export class DiscordServce {
         this.client.on("messageCreate", async (message: any) => {
             if (message.author.username === MARVIN_USERNAME) {
                 this.archive.archive(message);
+                this.pushMarvinToFallback(message);
                 return;
             }
 
@@ -132,13 +136,13 @@ export class DiscordServce {
             const imageDescriptions = await this.describeImages(message);
             this.archive.archive(message, imageDescriptions);
             const userResponse = await this.userResponseFactory(message, imageDescriptions);
-            contextService.pushWithLimit(userResponse, channelId);
+            this.fallbackContext.pushWithLimit(userResponse, channelId);
 
             const isMentioned = message.content.includes(MARVIN_ID) ||
                 message.mentions?.repliedUser?.username === MARVIN_USERNAME;
 
             if (message.author.bot) {
-                if (isMentioned) await this.handleBotMessage(message, contextService);
+                if (isMentioned) await this.handleBotMessage(message);
                 return;
             }
 
@@ -150,9 +154,9 @@ export class DiscordServce {
 
             if (shortReactionRoll && shortReactionCooldownCounter === 0) {
                 shortReactionCooldownCounter = SHORT_REACTION_COOLDOWN;
-                await this.handleShortReaction(message, contextService);
+                await this.handleShortReaction(message);
             } else if (isMentioned) {
-                await this.handleMentioned(message, contextService);
+                await this.handleMentioned(message);
             }
         });
 
@@ -207,13 +211,25 @@ export class DiscordServce {
         return MODEL.messageFactory(getMarvinMotivationSystemPrompt(date, peopleMap), 'system');
     }
 
-    marvinResponseFactory(content: string) {
-        const timestamp = new DateService().getFormattedDateTime();
-        return MODEL.messageFactory(`[${timestamp}] Marvin: ${content}`, 'assistant');
+    /** Keeps the in-memory fallback context (used only when the archive is unavailable or the channel is excluded) in step. */
+    private pushMarvinToFallback(message: any) {
+        if (!message.content || isTechnicalMarvinContent(message.content)) return;
+        const timestamp = new DateService(message.createdAt).getFormattedDateTime();
+        this.fallbackContext.pushWithLimit(
+            MODEL.messageFactory(`[${timestamp}] Marvin: ${message.content}`, 'assistant'),
+            message.channelId
+        );
+    }
+
+    /** Context of the message's channel. Catches the archive up on the first use of a channel after startup. */
+    private async getContext(message: any): Promise<Message[]> {
+        const parentId = message.channel?.isThread?.() ? message.channel.parentId : null;
+        await this.historySync?.ensureChannelFresh(message.channelId, parentId);
+        return this.historyContext.getContext(message.channelId, parentId, message.id);
     }
 
     /** Handles a message from another bot. Responds up to BOT_EXCHANGE_LIMIT times per channel, then sends a generated closing line and goes silent until a human resets the counter. */
-    async handleBotMessage(message: any, contextService: ContextService) {
+    async handleBotMessage(message: any) {
         const { channelId } = message;
         const count = botExchangeCounters.get(channelId) ?? 0;
         if (count >= BOT_EXCHANGE_LIMIT) return;
@@ -224,19 +240,17 @@ export class DiscordServce {
             try {
                 const response = await MODEL.contextInteract([
                     MODEL.messageFactory(getBotExchangeExhaustedSystemPrompt(), 'system'),
-                    ...stripImages(contextService.getContext(channelId)),
+                    ...stripImages(await this.getContext(message)),
                 ], SHORT_REACTION_MODEL_NAME);
                 if (response) content = stripLeadingTimestampPrefix(response.content);
             } catch (error: any) {
                 console.log("err: ", error?.message);
             }
             message.reply(content.substring(0, 1950));
-            contextService.pushWithLimit(this.marvinResponseFactory(content), channelId);
-            contextService.saveContextToFile("data/context.json");
             return;
         }
 
-        await this.handleMentioned(message, contextService);
+        await this.handleMentioned(message);
     }
 
     /** Posts a digest of recent activity across all tracked channels to the bots channel. Triggered on a cron schedule (see index.ts), not by individual messages. */
@@ -245,19 +259,7 @@ export class DiscordServce {
         if (!channel) return;
 
         try {
-            const combinedText = Object.entries(this.contextService.getContextMap())
-                .filter(([channelId]) => !EXCLUDED_CHANNEL_IDS.includes(channelId))
-                .flatMap(([, messages]) => stripImages(messages))
-                .map(m => (typeof m.content === 'string' ? m.content : ''))
-                .filter(Boolean)
-                .filter(text => {
-                    if (!since) return true;
-                    const sentAt = parseContextTimestamp(text);
-                    const sinceMinute = Math.floor(since.getTime() / 60000) * 60000;
-                    return !!sentAt && sentAt.getTime() > sinceMinute;
-                })
-                .join('\n');
-
+            const combinedText = this.collectSummaryText(since);
             if (!combinedText) return;
 
             channel.sendTyping();
@@ -268,28 +270,50 @@ export class DiscordServce {
 
             if (response) {
                 const content = stripLeadingTimestampPrefix(response.content);
-                this.contextService.pushWithLimit(this.marvinResponseFactory(content), BOTS_CHANNEL_ID);
                 channel.send(content.substring(0, 1950));
-                this.contextService.saveContextToFile("data/context.json");
             }
         } catch (error: any) {
             return exceptionHandler(error, channel);
         }
     }
 
+    /** Messages since `since` (default: the last SERVER_SUMMARY_FALLBACK_DAYS days), grouped per channel, one line each. */
+    private collectSummaryText(since?: Date): string {
+        const sinceMs = Math.floor((since?.getTime() ?? Date.now() - SERVER_SUMMARY_FALLBACK_DAYS * 86_400_000) / 60000) * 60000;
+        const db = this.archive.database;
+        if (db) {
+            try {
+                const byChannel = new Map<string, string[]>();
+                for (const m of db.getSince(sinceMs, EXCLUDED_CHANNEL_IDS, SERVER_SUMMARY_MAX_MESSAGES)) {
+                    byChannel.set(m.channelId, [...(byChannel.get(m.channelId) ?? []), renderLine(m, MARVIN_ID)]);
+                }
+                return [...byChannel.values()].flat().join('\n');
+            } catch (error: any) {
+                historyLog.error("odczyt wiadomości do podsumowania z bazy nie powiódł się — używam pamięci", error);
+            }
+        }
+        return Object.entries(this.fallbackContext.getContextMap())
+            .filter(([channelId]) => !EXCLUDED_CHANNEL_IDS.includes(channelId))
+            .flatMap(([, messages]) => stripImages(messages))
+            .map(m => (typeof m.content === 'string' ? m.content : ''))
+            .filter(text => {
+                const sentAt = parseContextTimestamp(text);
+                return !!sentAt && sentAt.getTime() > sinceMs;
+            })
+            .join('\n');
+    }
+
     /** Responds with a short (≤4 word) AI-generated reaction based on the last message in context. */
-    async handleShortReaction(message: any, contextService: ContextService) {
+    async handleShortReaction(message: any) {
         try {
             message.channel.sendTyping();
             const response = await MODEL.contextInteract([
                 MODEL.messageFactory(getShortReactionSystemPrompt(), 'system'),
-                ...stripImages(contextService.getContext(message.channelId)),
+                ...stripImages(await this.getContext(message)),
             ], SHORT_REACTION_MODEL_NAME);
             if (response) {
                 const content = stripLeadingTimestampPrefix(response.content);
-                contextService.pushWithLimit(this.marvinResponseFactory(content), message.channelId);
                 message.reply(content.substring(0, 1950));
-                contextService.saveContextToFile("data/context.json");
             }
         } catch (error: any) {
             return exceptionHandler(error, message);
@@ -297,9 +321,8 @@ export class DiscordServce {
     }
 
     /** Handles a message that directly mentions or replies to Marvin. Routes to MARVIN or PERPLEXITY. */
-    async handleMentioned(message: any, contextService: ContextService) {
+    async handleMentioned(message: any) {
         try {
-            const { channelId } = message;
             let assResponse = null;
 
             const hasImages = [...(message.attachments?.values() ?? [])].some(
@@ -314,7 +337,8 @@ export class DiscordServce {
             message.channel.sendTyping();
 
             const currentUrls = extractUrls(message.content);
-            const historyUrls = contextService.getContext(channelId).flatMap(msg =>
+            const context = stripImages(await this.getContext(message));
+            const historyUrls = context.flatMap(msg =>
                 typeof msg.content === 'string' ? extractUrls(msg.content) : []
             );
             const urls = [...new Set([...currentUrls, ...historyUrls])].slice(0, 5);
@@ -329,36 +353,34 @@ export class DiscordServce {
 
             const deciderResponse = await decider.contextInteract([
                 MODEL.messageFactory(DECIDER_SYSTEM_PROMPT, 'system'),
-                ...stripImages(contextService.getContext(channelId)),
+                ...context,
             ], DECIDER_MODEL_NAME);
 
             if (deciderResponse.content.includes('PERPLEXITY')) {
                 message.reply(INTERNET_NOTICE);
-                const { message: perplexityResponse } = await perplexity.contextInteract(stripImages(contextService.getContext(channelId)));
+                const { message: perplexityResponse } = await perplexity.contextInteract(context);
                 console.log(`perplexityResponse: ${perplexityResponse.content}`);
                 message.channel.sendTyping();
 
                 const userRequest = MODEL.messageFactory(getPerplexityToMarvinResponsePrompt(perplexityResponse.content));
                 assResponse = await MODEL.contextInteract([
                     this.getSystemContext(),
-                    ...stripImages(contextService.getContext(channelId)),
+                    ...context,
                     ...scrapedContext,
                     userRequest,
                 ]);
             } else {
                 assResponse = await MODEL.contextInteract([
                     this.getSystemContext(),
-                    ...stripImages(contextService.getContext(channelId)),
+                    ...context,
                     ...scrapedContext,
                 ]);
             }
 
             if (assResponse) {
                 const content = stripLeadingTimestampPrefix(assResponse.content);
-                contextService.pushWithLimit(this.marvinResponseFactory(content), channelId);
                 message.reply(content.substring(0, 1950));
             }
-            contextService.saveContextToFile("data/context.json");
         } catch (error: any) {
             return exceptionHandler(error, message);
         }
