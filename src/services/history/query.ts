@@ -21,6 +21,8 @@ export interface HistoryMessage {
     author: string;
     time: string;
     text: string;
+    /** Ready-to-paste Discord markdown link (`[dd.mm.yyyy hh:mm](<url>)`); absent without a server id. */
+    cite?: string;
 }
 
 export interface QueryResult {
@@ -48,6 +50,8 @@ export interface QueryFilters {
 export interface HistoryQueryOptions {
     excludedChannelIds: string[];
     selfId?: string;
+    /** Server id for building jump links; without it results carry no `cite`. */
+    guildId?: () => string | undefined;
 }
 
 const clamp = (value: number | undefined, fallback: number, max: number): number => {
@@ -72,13 +76,32 @@ const authorNamesFor = (input: string): string[] => {
     return [...names];
 };
 
-/** Turns free text into a safe FTS5 query: every word becomes a quoted prefix term, all must match. */
-export const buildFtsQuery = (text: string): string | null => {
-    const tokens = foldForSearch(text)
+const searchTokens = (text: string): string[] =>
+    foldForSearch(text)
         .split(/[^\p{L}\p{N}]+/u)
         .filter(t => t.length > 0)
         .slice(0, LIMITS.queryTokens);
+
+/** Turns free text into a safe FTS5 query: every word becomes a quoted prefix term, all must match. */
+export const buildFtsQuery = (text: string): string | null => {
+    const tokens = searchTokens(text);
     return tokens.length ? tokens.map(t => `"${t}"*`).join(" ") : null;
+};
+
+/** Lowercase, diacritics-free copy of the text with exactly the same length, for locating search terms. */
+const foldSameLength = (text: string): string =>
+    Array.from(text, c => (c.normalize("NFD").replace(/\p{M}/gu, "")[0] ?? c).toLowerCase().replace("ł", "l")[0] ?? c).join("");
+
+/** Shortens a message to `textChars`; when `terms` are given and the first hit lies beyond the beginning, keeps the hit visible. */
+const clip = (text: string, terms: string[]): string => {
+    if (text.length <= LIMITS.textChars) return text;
+    const folded = foldSameLength(text);
+    const hits = terms.map(t => folded.indexOf(foldSameLength(t))).filter(i => i >= 0);
+    const first = hits.length ? Math.min(...hits) : 0;
+    if (first < LIMITS.textChars - 80) return `${text.substring(0, LIMITS.textChars)}…`;
+    const start = Math.max(0, first - 150);
+    const end = start + LIMITS.textChars;
+    return `…${text.substring(start, end)}${end < text.length ? "…" : ""}`;
 };
 
 /**
@@ -89,8 +112,10 @@ export class HistoryQuery {
     private db: Database.Database;
     private excluded: string[];
     private selfId?: string;
+    private guildId?: () => string | undefined;
 
     constructor(file: string, options: HistoryQueryOptions) {
+        this.guildId = options.guildId;
         this.db = new Database(file, { readonly: true, fileMustExist: true });
         this.db.pragma("query_only = ON");
         this.db.pragma("busy_timeout = 5000");
@@ -113,19 +138,22 @@ export class HistoryQuery {
                 WHERE messages_fts MATCH ? ${filter.sql}
                 ORDER BY bm25(messages_fts), m.created_at DESC LIMIT ?`)
             .all(fts, ...filter.params, limit + 1);
-        return this.render(rows as any[], limit);
+        return this.render(rows as any[], limit, searchTokens(args.query));
     }
 
-    /** Messages in a time range (Warsaw time), oldest first; when the range holds more than `limit`, the earliest ones. */
-    range(args: QueryFilters & { limit?: number }): QueryResult {
+    /** Messages in a time range (Warsaw time), shown oldest first; when the range holds more than `limit`: the earliest ones, or with `newest` the latest ones. */
+    range(args: QueryFilters & { limit?: number; newest?: boolean }): QueryResult {
         const limit = clamp(args.limit, LIMITS.rangeDefault, LIMITS.rangeMax);
         const filter = this.filters(args, "m");
         if (typeof filter === "string") return this.empty(filter);
+        const direction = args.newest ? "DESC" : "ASC";
         const rows = this.db
             .prepare(`SELECT m.* FROM messages m WHERE 1 = 1 ${filter.sql}
-                ORDER BY m.created_at ASC, CAST(m.id AS INTEGER) ASC LIMIT ?`)
+                ORDER BY m.created_at ${direction}, CAST(m.id AS INTEGER) ${direction} LIMIT ?`)
             .all(...filter.params, limit + 1);
-        return this.render(rows as any[], limit);
+        const result = this.render(rows as any[], limit);
+        if (args.newest) result.messages.reverse();
+        return result;
     }
 
     /** `before` messages preceding and `after` following the given message in its channel, plus the message itself. */
@@ -217,7 +245,7 @@ export class HistoryQuery {
         return { sql: `AND ${parts.join(" AND ")} ${hidden.sql}`, params: [...params, ...hidden.params] };
     }
 
-    private render(rows: any[], limit: number): QueryResult {
+    private render(rows: any[], limit: number, terms: string[] = []): QueryResult {
         const overLimit = rows.length > limit;
         const channelNames = new Map<string, string>();
         const nameOf = (id: string) => {
@@ -228,20 +256,24 @@ export class HistoryQuery {
             return channelNames.get(id)!;
         };
 
+        const guild = this.guildId?.();
         const messages: HistoryMessage[] = [];
         let chars = 0;
         let budgetHit = false;
         for (const r of rows.slice(0, limit)) {
             const text = this.cleanText(renderBody({ content: r.content, embedsText: r.embeds_text, attachmentsText: r.attachments_text }));
-            const clipped = text.length > LIMITS.textChars ? `${text.substring(0, LIMITS.textChars)}…` : text;
+            const clipped = clip(text, terms);
             if (chars + clipped.length > LIMITS.totalChars) { budgetHit = true; break; }
             chars += clipped.length;
+            const time = formatWarsaw(r.created_at);
+            const [y, mo, d, hm] = time.split(/[. ]/);
             messages.push({
                 id: r.id,
                 channel: nameOf(r.channel_id),
                 author: r.author_id === this.selfId ? "Marvin" : mapGlobalNameNameToRealName[r.author_name],
-                time: formatWarsaw(r.created_at),
+                time,
                 text: clipped,
+                ...(guild ? { cite: `[${d}.${mo}.${y} ${hm}](<https://discord.com/channels/${guild}/${r.channel_id}/${r.id}>)` } : null),
             });
         }
         return { timezone: WARSAW_TZ, count: messages.length, truncated: overLimit || budgetHit, messages };

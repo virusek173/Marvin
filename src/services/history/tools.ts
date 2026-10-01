@@ -42,12 +42,17 @@ export const buildHistoryTools = (query: HistoryQuery): ToolSpec[] => [
     {
         name: "get_messages",
         description:
-            "Zwraca wiadomości z zakresu czasu (od najstarszych), np. 'co działo się wczoraj'. Opcjonalnie z jednego kanału lub od jednej osoby. " +
-            "Gdy w zakresie jest więcej wiadomości niż limit, dostajesz najwcześniejsze — zawęź zakres, żeby zobaczyć kolejne.",
+            "Zwraca wiadomości z zakresu czasu (zawsze ułożone od najstarszej), np. 'co działo się wczoraj'. Opcjonalnie z jednego kanału lub od jednej osoby. " +
+            "Gdy w zakresie jest więcej wiadomości niż limit, dostajesz najwcześniejsze — zawęź zakres, żeby zobaczyć kolejne. " +
+            "Do pytań o 'ostatnie N wiadomości' ustaw newest=true (wtedy daty są zbędne): dostaniesz N najnowszych wiadomości, nie zgaduj okna dat.",
         parameters: {
             type: "object",
-            properties: { ...FILTER_PROPS, limit: int("Maks. liczba wiadomości (domyślnie 50, maks. 100).") },
-            required: ["from"],
+            properties: {
+                ...FILTER_PROPS,
+                limit: int("Maks. liczba wiadomości (domyślnie 50, maks. 100)."),
+                newest: { type: "boolean", description: "true = zwróć NAJNOWSZE wiadomości z zakresu (przy braku dat: z całego archiwum)." },
+            },
+            required: [],
         },
         run: raw => {
             const a = asArgs(raw);
@@ -57,6 +62,7 @@ export const buildHistoryTools = (query: HistoryQuery): ToolSpec[] => [
                 from: asString(a.from),
                 to: asString(a.to),
                 limit: asInt(a.limit),
+                newest: a.newest === true,
             });
         },
     },

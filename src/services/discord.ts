@@ -173,7 +173,11 @@ export class DiscordServce {
     private openHistoryTools() {
         if (!this.archive.database) return;
         try {
-            this.historyQuery = new HistoryQuery(HISTORY_DB_FILE, { excludedChannelIds: EXCLUDED_CHANNEL_IDS, selfId: MARVIN_ID });
+            this.historyQuery = new HistoryQuery(HISTORY_DB_FILE, {
+                excludedChannelIds: EXCLUDED_CHANNEL_IDS,
+                selfId: MARVIN_ID,
+                guildId: () => this.client.guilds.cache.first()?.id,
+            });
             this.historyTools = buildHistoryTools(this.historyQuery);
         } catch (error: any) {
             historyLog.error("nie udało się otworzyć połączenia do odczytu historii — Marvin bez narzędzi historii", error);
@@ -330,8 +334,8 @@ export class DiscordServce {
                 ...stripImages(await this.getContext(message)),
             ], SHORT_REACTION_MODEL_NAME);
             if (response) {
-                const content = stripLeadingTimestampPrefix(response.content);
-                message.reply(content.substring(0, 1950));
+                const content = stripLeadingTimestampPrefix(response.content ?? "");
+                if (content.trim()) await message.reply(content.substring(0, 1950));
             }
         } catch (error: any) {
             return exceptionHandler(error, message);
@@ -404,8 +408,9 @@ export class DiscordServce {
             }
 
             if (assResponse) {
-                const content = stripLeadingTimestampPrefix(assResponse.content);
-                message.reply(content.substring(0, 1950));
+                const content = stripLeadingTimestampPrefix(assResponse.content ?? "");
+                if (!content.trim()) throw new Error("Model zwrócił pustą odpowiedź");
+                await message.reply(content.substring(0, 1950));
             }
         } catch (error: any) {
             return exceptionHandler(error, message);

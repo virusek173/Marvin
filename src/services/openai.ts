@@ -12,17 +12,9 @@ export type ContentPart =
     | { type: "text"; text: string }
     | { type: "image_url"; image_url: { url: string } };
 
-export interface ToolCall {
-    id: string;
-    type: "function";
-    function: { name: string; arguments: string };
-}
-
 export interface Message {
-    role: "system" | "user" | "assistant" | "tool";
+    role: "system" | "user" | "assistant";
     content: string | ContentPart[];
-    tool_calls?: ToolCall[];
-    tool_call_id?: string;
 }
 
 export interface ToolSpec {
@@ -41,6 +33,20 @@ export interface ToolLoopOptions {
 }
 
 const MAX_TOOL_RESULT_CHARS = 20000;
+const MAX_MALFORMED_RETRIES = 2;
+const TOOL_REASONING_EFFORT = "low";
+const TOOL_MAX_OUTPUT_TOKENS = 4000;
+
+const toResponsesInput = (m: Message) => ({
+    role: m.role,
+    content: typeof m.content === "string"
+        ? m.content
+        : m.content.map(part => part.type === "text"
+            ? { type: m.role === "assistant" ? "output_text" : "input_text", text: part.text }
+            : { type: "input_image", image_url: part.image_url.url, detail: "auto" }),
+});
+// the model sometimes prints its tool call as plain text ("assistant to=functions.x ...") instead of calling it
+const LEAKED_TOOL_CALL = /\bto=functions\.|<\|(?:call|channel|start|end|message)\|>/;
 
 export class OpenAi {
     private openai: OpenAI;
@@ -103,29 +109,46 @@ export class OpenAi {
     async contextInteractWithTools(context: Array<Message>, tools: ToolSpec[], options: ToolLoopOptions = {}): Promise<any> {
         const { model = DEFAULT_MODEL_NAME, maxRounds = 5, onRound } = options;
         const byName = new Map(tools.map(t => [t.name, t]));
+        // gpt-5.6 does not accept function tools together with reasoning on /chat/completions, so this loop uses /responses
         const apiTools = tools.map(t => ({
             type: "function" as const,
-            function: { name: t.name, description: t.description, parameters: t.parameters },
+            name: t.name,
+            description: t.description,
+            parameters: t.parameters,
+            strict: false,
         }));
-        const messages: Message[] = [...context];
+        const input: any[] = context.map(toResponsesInput);
+        let malformed = 0;
 
         try {
             for (let round = 0; round <= maxRounds; round++) {
                 const lastRound = round === maxRounds;
-                const completion = await this.openai.chat.completions.create({
+                const response = await this.openai.responses.create({
                     model,
-                    messages: messages as any,
-                    max_completion_tokens: 2500,
-                    ...(lastRound ? null : { tools: apiTools }),
+                    input,
+                    tools: apiTools,
+                    tool_choice: lastRound ? "none" : "auto",
+                    reasoning: { effort: TOOL_REASONING_EFFORT },
+                    max_output_tokens: TOOL_MAX_OUTPUT_TOKENS,
                 });
-                const reply = completion.choices[0].message;
-                const calls = lastRound ? [] : (reply.tool_calls ?? []).filter(c => c.type === "function");
-                if (calls.length === 0) return reply;
+                const calls = lastRound ? [] : response.output.filter((item: any) => item.type === "function_call") as any[];
+                const text = response.output_text ?? "";
+                if (calls.length === 0 && (!text.trim() || LEAKED_TOOL_CALL.test(text))) {
+                    if (++malformed > MAX_MALFORMED_RETRIES) throw new Error("Model zwrócił pustą lub uszkodzoną odpowiedź zamiast tekstu");
+                    console.warn(`[openai] pusta lub uszkodzona odpowiedź (${text.trim() ? "wyciek wywołania narzędzia" : "brak treści"}), ponawiam (${malformed}/${MAX_MALFORMED_RETRIES})`);
+                    round--;
+                    continue;
+                }
+                if (calls.length === 0) return { role: "assistant", content: text };
 
-                messages.push({ role: "assistant", content: reply.content ?? "", tool_calls: calls as ToolCall[] });
+                input.push(...response.output);
                 onRound?.();
                 for (const call of calls) {
-                    messages.push({ role: "tool", tool_call_id: call.id, content: await this.runTool(byName.get(call.function.name), call.function) });
+                    input.push({
+                        type: "function_call_output",
+                        call_id: call.call_id,
+                        output: await this.runTool(byName.get(call.name), call),
+                    });
                 }
             }
         } catch (error: any) {
@@ -134,7 +157,7 @@ export class OpenAi {
         }
     }
 
-    private async runTool(tool: ToolSpec | undefined, call: { name: string; arguments: string }): Promise<string> {
+    private async runTool(tool: ToolSpec | undefined, call: { name: string; arguments?: string }): Promise<string> {
         const started = Date.now();
         let output: unknown;
         try {

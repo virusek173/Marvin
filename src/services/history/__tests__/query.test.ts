@@ -74,6 +74,15 @@ describe("HistoryQuery", () => {
             expect(q.search({ query: "kurtk" }).count).toBe(1);
         });
 
+        it("adds a ready-to-paste citation to each message only when the server id is known", () => {
+            db.insertLive(row({ id: "777", content: "link test", channelId: "c1", createdAt: BASE }));
+            expect(q.search({ query: "link" }).messages[0].cite).toBeUndefined();
+
+            q.close();
+            q = new HistoryQuery(file, { excludedChannelIds: [], selfId: MARVIN, guildId: () => "G1" });
+            expect(q.search({ query: "link" }).messages[0].cite).toBe("[10.03.2025 12:00](<https://discord.com/channels/G1/c1/777>)");
+        });
+
         it("treats operators and quotes in the query as plain text, never as FTS syntax or SQL", () => {
             db.insertLive(row({ content: "hello world" }));
             expect(() => q.search({ query: `hello" OR world* NEAR(a b) -- ; DROP TABLE messages` })).not.toThrow();
@@ -112,6 +121,14 @@ describe("HistoryQuery", () => {
             expect(res.truncated).toBe(true);
         });
 
+        it("keeps the matched word visible when it sits far into a long message", () => {
+            db.insertLive(row({ content: `${"Wstęp ".repeat(120)}Uwaga ROWERY! i dalej ${"koniec ".repeat(100)}` }));
+            const text = q.search({ query: "rowery" }).messages[0].text;
+            expect(text).toMatch(/ROWERY/);
+            expect(text.length).toBeLessThanOrEqual(LIMITS.textChars + 2);
+            expect(text.startsWith("…")).toBe(true);
+        });
+
         it("hides excluded channels and their threads even if old data remains, and technical messages", () => {
             db.insertLive(row({ content: "sekret", channelId: "secret" }));
             db.insertLive(row({ content: "sekret w wątku", channelId: "t1", parentId: "secret" }));
@@ -140,6 +157,15 @@ describe("HistoryQuery", () => {
             db.insertLive(row({ content: "jutro", createdAt: Date.UTC(2025, 2, 10, 23, 1) })); // 00:01 on the 11th
             const res = q.range({ from: "2025-03-10", to: "2025-03-10" });
             expect(res.messages.map(m => m.text)).toEqual(["dzień", "wieczór"]);
+        });
+
+        it("with newest returns the latest messages of the range, still oldest first", () => {
+            for (let i = 1; i <= 10; i++) db.insertLive(row({ content: `m${i}` }));
+            const res = q.range({ limit: 3, newest: true });
+            expect(res.messages.map(m => m.text)).toEqual(["m8", "m9", "m10"]);
+            expect(res.truncated).toBe(true);
+            expect(q.range({ limit: 3 }).messages.map(m => m.text)).toEqual(["m1", "m2", "m3"]);
+            expect(q.range({ limit: 50, newest: true }).truncated).toBe(false);
         });
 
         it("caps results and marks truncation", () => {

@@ -96,7 +96,8 @@ Discord: user sends message
                     └── "MARVIN" →
                             MODEL.contextInteractWithTools([system + history rules, ...context], historyTools)
                                 ↓ model may call search_messages / get_messages / get_message_context / list_channels
-                                ↓ (max 5 rounds, then a forced answer without tools)
+                                ↓ (OpenAI Responses API, reasoning "low"; max 5 rounds, then a forced answer without tools;
+                                ↓  empty / leaked-tool-call replies are retried twice, then an error is raised)
                     │
                     └── (both paths)
                             message.reply(response.substring(0, 1950))
@@ -147,7 +148,7 @@ interface Message {
 
 3. **Archive as the single source of context**: the context window is a query (last 30 messages of the channel), not a stored copy, so it survives restarts and rebuilds through the `marvin_data` volume. `ContextService` is only an in-memory FIFO used for excluded channels and when the archive is unavailable.
 
-4. **Tools get the query layer, never Discord**: history tools wrap `HistoryQuery` (readonly connection, parameterized SQL, hard limits, excluded channels filtered). Tool results are data to quote, not instructions.
+4. **Tools get the query layer, never Discord**: history tools wrap `HistoryQuery` (readonly connection, parameterized SQL, hard limits, excluded channels filtered). Tool results are data to quote, not instructions. Each result message carries a ready-made `cite` (markdown jump link) that the model pastes verbatim, because hand-built links with 19-digit ids get corrupted; long messages are clipped around the search hit, and `get_messages` can return the newest N messages (`newest=true`). The scraper skips Discord message links so Marvin's own citations are not fetched as web pages.
 
 5. **`MODEL` constant**: In `discord.ts`, `MODEL = openai` is a module-level constant. Swap it to `grok` to change the main responder without touching logic.
 

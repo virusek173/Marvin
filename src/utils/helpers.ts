@@ -71,7 +71,7 @@ export const exceptionHandler = (error: any, message: any) => {
   const payload = { content: text, files: ['assets/mila_kawka.png'] };
 
   const send = message.reply?.bind(message) ?? message.send?.bind(message);
-  send?.(payload)?.catch(() => send?.(text));
+  send?.(payload)?.catch(() => send?.(text)?.catch(() => {}));
 }
 
 /**
