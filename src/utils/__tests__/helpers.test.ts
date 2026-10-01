@@ -1,4 +1,26 @@
-import { pushWithLimit, parseContextTimestamp, splitForDiscord } from '../helpers';
+import { pushWithLimit, parseContextTimestamp, splitForDiscord, moveCitesToLineStart } from '../helpers';
+
+describe('moveCitesToLineStart', () => {
+    const link = '[01.10.2026 22:02](<https://discord.com/channels/1/2/3>)';
+
+    it('moves a trailing link to the start of a bullet', () => {
+        expect(moveCitesToLineStart(`- Jack kupił zebrafisza. Konkret dnia. ${link}`)).toBe(`- ${link} Jack kupił zebrafisza. Konkret dnia.`);
+        expect(moveCitesToLineStart(`1. Coś się stało ${link}`)).toBe(`1. ${link} Coś się stało`);
+        expect(moveCitesToLineStart(`Zwykła linia ${link}`)).toBe(`${link} Zwykła linia`);
+    });
+
+    it('leaves lines that already start with a link, have no link, or are only a link', () => {
+        const ok = `- ${link} Jack pytał o rowery`;
+        expect(moveCitesToLineStart(ok)).toBe(ok);
+        expect(moveCitesToLineStart('- bez linku')).toBe('- bez linku');
+        expect(moveCitesToLineStart(`- ${link}`)).toBe(`- ${link}`);
+    });
+
+    it('does not touch links in the middle of a sentence', () => {
+        const mid = `- Zobacz ${link} i dalej tekst`;
+        expect(moveCitesToLineStart(mid)).toBe(mid);
+    });
+});
 
 describe('splitForDiscord', () => {
     it('leaves a short reply untouched', () => {

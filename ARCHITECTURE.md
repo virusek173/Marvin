@@ -26,7 +26,7 @@ src/
 │       └── time.ts        Warsaw-time formatting/parsing
 └── utils/
     ├── prompts.ts         All system prompts and prompt factories
-    ├── helpers.ts         pushWithLimit, mapGlobalNameNameToRealName, exceptionHandler, splitForDiscord
+    ├── helpers.ts         pushWithLimit, mapGlobalNameNameToRealName, exceptionHandler, splitForDiscord, moveCitesToLineStart
     └── consts.ts          Model name constants
 ```
 
@@ -148,7 +148,7 @@ interface Message {
 
 3. **Archive as the single source of context**: the context window is a query (last 30 messages of the channel), not a stored copy, so it survives restarts and rebuilds through the `marvin_data` volume. `ContextService` is only an in-memory FIFO used for excluded channels and when the archive is unavailable.
 
-4. **Tools get the query layer, never Discord**: history tools wrap `HistoryQuery` (readonly connection, parameterized SQL, hard limits, excluded channels filtered). Tool results are data to quote, not instructions. Each result message carries a ready-made `cite` (markdown jump link) that the model pastes verbatim, because hand-built links with 19-digit ids get corrupted; long messages are clipped around the search hit, and `get_messages` can return the newest N messages (`newest=true`; `truncated` then only flags a cut caused by the size budget, not the existence of older messages). The result budget counts the serialized size of each message (`LIMITS.totalChars` = 30000); `openai.ts` replaces any tool output above `MAX_TOOL_RESULT_CHARS` (40000) with an error, so the two must stay consistent. In summaries of many messages the prompt asks for a `cite` link only on points about one concrete message, placed first in the point. The scraper skips Discord message links so Marvin's own citations are not fetched as web pages.
+4. **Tools get the query layer, never Discord**: history tools wrap `HistoryQuery` (readonly connection, parameterized SQL, hard limits, excluded channels filtered). Tool results are data to quote, not instructions. Each result message carries a ready-made `cite` (markdown jump link) that the model pastes verbatim, because hand-built links with 19-digit ids get corrupted; long messages are clipped around the search hit, and `get_messages` can return the newest N messages (`newest=true`; `truncated` then only flags a cut caused by the size budget, not the existence of older messages). The result budget counts the serialized size of each message (`LIMITS.totalChars` = 45000); `openai.ts` replaces any tool output above `MAX_TOOL_RESULT_CHARS` (60000) with an error, so the two must stay consistent. In summaries of many messages the prompt asks for a `cite` link only on points about one concrete message, placed first in the point (and `moveCitesToLineStart` enforces this in code for replies to mentions). The scraper skips Discord message links so Marvin's own citations are not fetched as web pages.
 
 5. **`MODEL` constant**: In `discord.ts`, `MODEL = openai` is a module-level constant. Swap it to `grok` to change the main responder without touching logic.
 

@@ -6,6 +6,7 @@ import {
     stripLeadingTimestampPrefix,
     parseContextTimestamp,
     splitForDiscord,
+    moveCitesToLineStart,
 } from "../utils/helpers.js";
 import { Message, OpenAi, ToolSpec } from "../services/openai.js";
 import { DateService } from "./date.js";
@@ -411,7 +412,7 @@ export class DiscordServce {
             if (assResponse) {
                 const content = stripLeadingTimestampPrefix(assResponse.content ?? "");
                 if (!content.trim()) throw new Error("Model zwrócił pustą odpowiedź");
-                const [first, ...rest] = splitForDiscord(content);
+                const [first, ...rest] = splitForDiscord(moveCitesToLineStart(content));
                 await message.reply(first);
                 for (const part of rest) await message.channel.send(part);
             }

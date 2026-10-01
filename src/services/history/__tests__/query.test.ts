@@ -186,9 +186,9 @@ describe("HistoryQuery", () => {
         });
 
         it("with newest still flags a cut caused by the size budget", () => {
-            for (let i = 0; i < 60; i++) db.insertLive(row({ content: "x".repeat(2000) }));
-            const res = q.range({ limit: 60, newest: true });
-            expect(res.count).toBeLessThan(60);
+            for (let i = 0; i < 100; i++) db.insertLive(row({ content: "x".repeat(2000) }));
+            const res = q.range({ limit: 100, newest: true });
+            expect(res.count).toBeLessThan(100);
             expect(res.truncated).toBe(true);
         });
 

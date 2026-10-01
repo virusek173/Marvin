@@ -57,6 +57,18 @@ export const stripImages = (context: Message[]): Message[] =>
 export const stripLeadingTimestampPrefix = (content: string): string =>
   content.replace(/^\s*\[\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}\]\s*[^\]\n:]+:\s*/, "");
 
+const TRAILING_CITE = /^(\s*(?:[-*•]|\d+[.)])\s+)?(.*?)\s*(\[\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}\]\(<https?:\/\/[^>\s]+>\))\s*$/;
+const LEADING_CITE = /^\s*(?:(?:[-*•]|\d+[.)])\s+)?\[\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}\]\(</;
+
+/** The model keeps putting message links at the end of a line; moves a single trailing `cite` link to the start of the line (after the bullet). */
+export const moveCitesToLineStart = (text: string): string =>
+  text.split("\n").map(line => {
+    if (LEADING_CITE.test(line)) return line;
+    const m = TRAILING_CITE.exec(line);
+    if (!m || !m[2].trim()) return line;
+    return `${m[1] ?? ""}${m[3]} ${m[2].trim()}`;
+  }).join("\n");
+
 /** Splits a long reply into Discord-sized parts, preferring paragraph, line, then word boundaries; the last part is cut if `maxParts` is exceeded. */
 export const splitForDiscord = (text: string, maxLength = 1950, maxParts = 4): string[] => {
   const parts: string[] = [];

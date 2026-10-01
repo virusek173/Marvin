@@ -115,7 +115,7 @@ describe("OpenAi.contextInteractWithTools", () => {
     });
 
     it("stops running tools once the total output budget for a question is spent", async () => {
-        const chunk: ToolSpec = { ...search, name: "chunk", run: jest.fn(() => ({ text: "a".repeat(35000) })) };
+        const chunk: ToolSpec = { ...search, name: "chunk", run: jest.fn(() => ({ text: "a".repeat(15000) })) };
         create
             .mockResolvedValueOnce(toolRequest(call("a", "chunk", {}), call("b", "chunk", {}), call("c", "chunk", {})))
             .mockResolvedValueOnce(answer("ok"));
@@ -126,7 +126,7 @@ describe("OpenAi.contextInteractWithTools", () => {
     });
 
     it("replaces oversized tool output with an error", async () => {
-        const big: ToolSpec = { ...search, name: "big", run: () => ({ text: "a".repeat(50000) }) };
+        const big: ToolSpec = { ...search, name: "big", run: () => ({ text: "a".repeat(70000) }) };
         create
             .mockResolvedValueOnce(toolRequest(call("a", "big", {})))
             .mockResolvedValueOnce(answer("ok"));

@@ -11,7 +11,7 @@ export const LIMITS = {
     rangeMax: 100,
     aroundMax: 15,
     textChars: 500,
-    totalChars: 30000,
+    totalChars: 45000,
     queryTokens: 8,
 };
 
