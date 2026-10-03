@@ -4,7 +4,7 @@
 
 ```
 src/
-├── index.ts               Entry point: 20:00 server-summary cron
+├── index.ts               Entry point: crons (20:00 server summary + monthly report, 04:00 profiles)
 ├── services/
 │   ├── discord.ts         Bot logic: message routing, event handlers
 │   ├── context.ts         In-memory FIFO context (fallback only, see "Message Archive")

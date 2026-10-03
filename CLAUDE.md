@@ -35,6 +35,7 @@ npm test              # Jest tests
 | `HISTORY_SYNC_ENABLED` | `true` starts the history backfill (whole server, read-only) at startup and an hourly catch-up. Off by default |
 | `MARVIN_ID` | Bot's Discord user ID — used to detect mentions |
 | `MARVIN_USERNAME` | Bot's username — used to ignore its own messages |
+| `OPENAI_API_KEY` | OpenAI API key — not read in our code, the `openai` SDK picks it up itself (`new OpenAI()`) |
 | `PERPLEXITY_KEY` | Perplexity API key (web search) |
 | `GROK_API` | Grok/X.ai API key |
 | `HOMAR_ID` | Discord ID of Homar |
@@ -108,7 +109,7 @@ Informs about "niedziela handlowa" (trading/non-trading Sundays in Poland — da
 
 | File | Role |
 |---|---|
-| `src/index.ts` | Entry point — client startup + summary cron |
+| `src/index.ts` | Entry point — client startup + crons (server summary, monthly report, profiles) |
 | `src/services/discord.ts` | Main bot logic — message routing |
 | `src/services/context.ts` | In-memory FIFO context (30/channel) — fallback only (excluded channels, archive failure) |
 | `src/services/history/` | SQLite message archive: `archive.ts` live write, `sync.ts` backfill, `context.ts` context from DB, `query.ts` + `tools.ts` read-only search for the model (see ARCHITECTURE.md) |
