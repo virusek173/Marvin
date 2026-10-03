@@ -46,8 +46,9 @@ const toResponsesInput = (m: Message) => ({
             ? { type: m.role === "assistant" ? "output_text" : "input_text", text: part.text }
             : { type: "input_image", image_url: part.image_url.url, detail: "auto" }),
 });
-// the model sometimes prints its tool call as plain text ("assistant to=functions.x ...") instead of calling it
-const LEAKED_TOOL_CALL = /\bto=functions\.|<\|(?:call|channel|start|end|message)\|>/;
+// the model sometimes prints its tool call as plain text ("assistant to=functions.x ...") instead of calling it,
+// or emits tool-channel garbage ("[tool]\nYou have N weighted tokens left") as the answer
+const LEAKED_TOOL_CALL = /\bto=functions\.|<\|(?:call|channel|start|end|message)\|>|^\s*\[tool\]|weighted tokens left/i;
 
 interface TokenUsage {
     input: number;

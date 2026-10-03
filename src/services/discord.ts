@@ -48,6 +48,7 @@ const {
     BOTS_CHANNEL_ID,
     MARVIN_ID,
     MARVIN_USERNAME,
+    TEST_WEBHOOK_AS_HUMAN,
     HOMAR_ID,
     JACEK_ID,
     DOMIN_ID,
@@ -155,7 +156,9 @@ export class DiscordServce {
             const isMentioned = message.content.includes(MARVIN_ID) ||
                 message.mentions?.repliedUser?.username === MARVIN_USERNAME;
 
-            if (message.author.bot) {
+            // Staging only: lets scripts/staging-ask.mjs (a channel webhook) test the full human flow.
+            const isTestWebhook = TEST_WEBHOOK_AS_HUMAN === "true" && !!message.webhookId;
+            if (message.author.bot && !isTestWebhook) {
                 if (isMentioned) await this.handleBotMessage(message);
                 return;
             }

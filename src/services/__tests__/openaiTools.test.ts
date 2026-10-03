@@ -112,6 +112,24 @@ describe("OpenAi.contextInteractWithTools", () => {
         expect(create).toHaveBeenCalledTimes(3);
     });
 
+    it("retries on tool-channel garbage like '[tool] ... weighted tokens left', but not on an ordinary mention of a tool", async () => {
+        create.mockResolvedValueOnce(answer("[tool]\nYou have 1012 weighted tokens left")).mockResolvedValueOnce(answer("normalna odpowiedź"));
+        const res = await ai().contextInteractWithTools([{ role: "user", content: "x" }], [search]);
+        expect(res.content).toBe("normalna odpowiedź");
+        expect(create).toHaveBeenCalledTimes(2);
+
+        create.mockReset();
+        create.mockResolvedValue(answer("Mam 3 weighted tokens left"));
+        await expect(ai().contextInteractWithTools([{ role: "user", content: "x" }], [search])).rejects.toThrow(/uszkodzoną/);
+        expect(create).toHaveBeenCalledTimes(3);
+
+        create.mockReset();
+        create.mockResolvedValueOnce(answer("Użyj [tool] w środku zdania, to nie wyciek"));
+        const ok = await ai().contextInteractWithTools([{ role: "user", content: "x" }], [search]);
+        expect(ok.content).toContain("w środku zdania");
+        expect(create).toHaveBeenCalledTimes(1);
+    });
+
     it("treats an empty reply like a malformed one", async () => {
         create.mockResolvedValueOnce({ output: [], output_text: "  " }).mockResolvedValueOnce(answer("jest"));
         const res = await ai().contextInteractWithTools([{ role: "user", content: "x" }], [search]);
