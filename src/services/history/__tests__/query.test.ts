@@ -112,6 +112,26 @@ describe("HistoryQuery", () => {
             expect(q.search({ query: "pizza", from: "wczoraj" }).note).toMatch(/Niepoprawna data/);
         });
 
+        it("skips bot messages unless an author or include_bots is given", () => {
+            db.insertLive(row({ content: "wyjazd do Basi planowany", authorName: "Vajrusek" }));
+            db.insertLive(row({ content: "wyjazd do Basi w bajce", authorId: MARVIN, authorName: "Marvin", isBot: true }));
+            expect(q.search({ query: "wyjazd" }).messages.map(m => m.text)).toEqual(["wyjazd do Basi planowany"]);
+            expect(q.search({ query: "wyjazd", includeBots: true }).count).toBe(2);
+            expect(q.search({ query: "wyjazd", author: "Marvin" }).messages.map(m => m.text)).toEqual(["wyjazd do Basi w bajce"]);
+        });
+
+        it("falls back to any of the words when no message has all of them", () => {
+            db.insertLive(row({ content: "Basia jedzie nad morze" }));
+            db.insertLive(row({ content: "wyjazd jest w piątek" }));
+            const res = q.search({ query: "wyjazd Basi" });
+            expect(res.count).toBe(2);
+            expect(res.note).toMatch(/którymkolwiek/);
+            db.insertLive(row({ content: "wyjazd Basi w sobotę" }));
+            const exact = q.search({ query: "wyjazd Basi" });
+            expect(exact.messages.map(m => m.text)).toEqual(["wyjazd Basi w sobotę"]);
+            expect(exact.note).toBeUndefined();
+        });
+
         it("caps the number of results", () => {
             for (let i = 0; i < 40; i++) db.insertLive(row({ content: "powtarzalne słowo" }));
             const res = q.search({ query: "powtarzalne", limit: 1000 });

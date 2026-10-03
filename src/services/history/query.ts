@@ -83,9 +83,9 @@ const searchTokens = (text: string): string[] =>
         .slice(0, LIMITS.queryTokens);
 
 /** Turns free text into a safe FTS5 query: every word becomes a quoted prefix term, all must match. */
-export const buildFtsQuery = (text: string): string | null => {
+export const buildFtsQuery = (text: string, join: "AND" | "OR" = "AND"): string | null => {
     const tokens = searchTokens(text);
-    return tokens.length ? tokens.map(t => `"${t}"*`).join(" ") : null;
+    return tokens.length ? tokens.map(t => `"${t}"*`).join(join === "OR" ? " OR " : " ") : null;
 };
 
 /** Lowercase, diacritics-free copy of the text with exactly the same length, for locating search terms. */
@@ -127,18 +127,28 @@ export class HistoryQuery {
         this.db.close();
     }
 
-    search(args: QueryFilters & { query: string; limit?: number }): QueryResult {
+    /** Words must all match; if nothing matches, falls back to any of the words. Bot messages are skipped unless an author is given or `includeBots` is set. */
+    search(args: QueryFilters & { query: string; limit?: number; includeBots?: boolean }): QueryResult {
         const fts = buildFtsQuery(args.query ?? "");
         if (!fts) return this.empty("Puste zapytanie — podaj co najmniej jedno słowo do wyszukania.");
         const limit = clamp(args.limit, LIMITS.searchDefault, LIMITS.searchMax);
         const filter = this.filters(args, "m");
         if (typeof filter === "string") return this.empty(filter);
-        const rows = this.db
+        const skipBots = !args.includeBots && !args.author?.trim() ? " AND m.is_bot = 0" : "";
+        const run = (match: string) => this.db
             .prepare(`SELECT m.* FROM messages_fts f JOIN messages m ON m.seq = f.rowid
-                WHERE messages_fts MATCH ? ${filter.sql}
+                WHERE messages_fts MATCH ? ${filter.sql}${skipBots}
                 ORDER BY bm25(messages_fts), m.created_at DESC LIMIT ?`)
-            .all(fts, ...filter.params, limit + 1);
-        return this.render(rows as any[], limit, searchTokens(args.query));
+            .all(match, ...filter.params, limit + 1) as any[];
+        const terms = searchTokens(args.query);
+        let rows = run(fts);
+        let note: string | undefined;
+        if (rows.length === 0 && terms.length > 1) {
+            rows = run(buildFtsQuery(args.query, "OR")!);
+            if (rows.length > 0) note = "Żadna wiadomość nie zawiera wszystkich słów naraz — pokazuję wiadomości z którymkolwiek ze słów, najlepiej dopasowane najpierw.";
+        }
+        const result = this.render(rows, limit, terms);
+        return note ? { ...result, note } : result;
     }
 
     /** Messages in a time range (Warsaw time), shown oldest first; when the range holds more than `limit`: the earliest ones, or with `newest` the latest ones. */

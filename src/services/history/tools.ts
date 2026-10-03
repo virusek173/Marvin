@@ -21,10 +21,16 @@ export const buildHistoryTools = (query: HistoryQuery): ToolSpec[] => [
         name: "search_messages",
         description:
             "Szuka w archiwum wiadomości serwera Discord po słowach (wszystkie podane słowa muszą wystąpić; dopasowanie po początku słowa, " +
-            "więc podawaj rdzenie bez końcówek, np. 'kurtk'). Wyniki posortowane wg trafności. Zwraca id, kanał, autora, czas i treść.",
+            "więc podawaj rdzenie bez końcówek, np. 'kurtk'; gdy żadna wiadomość nie ma wszystkich słów, dostajesz te z którymkolwiek z nich). " +
+            "Wiadomości botów (w tym Twoje własne) są pomijane, chyba że podasz autora albo include_bots=true. Wyniki posortowane wg trafności. Zwraca id, kanał, autora, czas i treść.",
         parameters: {
             type: "object",
-            properties: { query: str("Słowa do wyszukania, np. 'urlop sierpień'."), ...FILTER_PROPS, limit: int("Maks. liczba wyników (domyślnie 10, maks. 25).") },
+            properties: {
+                query: str("Słowa do wyszukania, np. 'urlop sierpień'."),
+                ...FILTER_PROPS,
+                limit: int("Maks. liczba wyników (domyślnie 10, maks. 25)."),
+                include_bots: { type: "boolean", description: "true = szukaj też w wiadomościach botów, w tym Marvina (domyślnie pomijane)." },
+            },
             required: ["query"],
         },
         run: raw => {
@@ -36,6 +42,7 @@ export const buildHistoryTools = (query: HistoryQuery): ToolSpec[] => [
                 from: asString(a.from),
                 to: asString(a.to),
                 limit: asInt(a.limit),
+                includeBots: a.include_bots === true,
             });
         },
     },
