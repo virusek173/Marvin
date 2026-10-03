@@ -44,6 +44,14 @@ CREATE TABLE IF NOT EXISTS sync_state (
     last_error TEXT
 );
 
+CREATE TABLE IF NOT EXISTS profiles (
+    name TEXT PRIMARY KEY,
+    summary TEXT NOT NULL,
+    message_count INTEGER NOT NULL,
+    last_seq INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(body, tokenize = 'unicode61 remove_diacritics 2');
 
 CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
@@ -112,6 +120,34 @@ export interface SyncState {
     lastSuccessAt: number | null;
     lastError: string | null;
 }
+
+export interface Profile {
+    /** Real first name (see mapGlobalNameNameToRealName). */
+    name: string;
+    summary: string;
+    /** Human messages of this person in the archive when the profile was written. */
+    messageCount: number;
+    /** Highest message `seq` the profile is based on; the next update reads only newer rows. */
+    lastSeq: number;
+    updatedAt: number;
+}
+
+export interface ProfileAuthor {
+    authorName: string;
+    isBot: boolean;
+    messages: number;
+}
+
+export interface ProfileSourceMessage extends StoredMessage {
+    seq: number;
+}
+
+const excludedSql = (excludedChannelIds: string[]): string => {
+    const marks = excludedChannelIds.map(() => "?").join(",");
+    return excludedChannelIds.length
+        ? `AND channel_id NOT IN (${marks}) AND (parent_id IS NULL OR parent_id NOT IN (${marks}))`
+        : "";
+};
 
 export class HistoryDb {
     readonly db: Database.Database;
@@ -225,6 +261,40 @@ export class HistoryDb {
                 ORDER BY created_at DESC, CAST(id AS INTEGER) DESC LIMIT ?`)
             .all(sinceMs, ...excludedChannelIds, ...excludedChannelIds, limit);
         return rows.map(toStored).reverse();
+    }
+
+    /** Every author name (people and bots, except `selfId`) with the number of their text messages outside the excluded channels. */
+    getProfileAuthors(excludedChannelIds: string[], selfId: string = ""): ProfileAuthor[] {
+        const rows = this.db
+            .prepare(`SELECT author_name, MAX(is_bot) AS bot, COUNT(*) AS n FROM messages
+                WHERE author_id != ? AND is_technical = 0 AND ${HAS_TEXT} ${excludedSql(excludedChannelIds)}
+                GROUP BY author_name`)
+            .all(selfId, ...excludedChannelIds, ...excludedChannelIds) as { author_name: string; bot: number; n: number }[];
+        return rows.map(r => ({ authorName: r.author_name, isBot: !!r.bot, messages: r.n }));
+    }
+
+    /** The newest `limit` text messages (inserted after `afterSeq`) written by any of the given author names, oldest first. */
+    getAuthorMessagesAfter(authorNames: string[], afterSeq: number, excludedChannelIds: string[], limit: number, selfId: string = ""): ProfileSourceMessage[] {
+        if (authorNames.length === 0) return [];
+        const marks = authorNames.map(() => "?").join(",");
+        const rows = this.db
+            .prepare(`SELECT seq, ${STORED_COLUMNS} FROM messages
+                WHERE author_id != ? AND is_technical = 0 AND ${HAS_TEXT} AND seq > ? AND author_name IN (${marks}) ${excludedSql(excludedChannelIds)}
+                ORDER BY seq DESC LIMIT ?`)
+            .all(selfId, afterSeq, ...authorNames, ...excludedChannelIds, ...excludedChannelIds, limit) as any[];
+        return rows.map(r => ({ ...toStored(r), seq: r.seq as number })).reverse();
+    }
+
+    getProfile(name: string): Profile | undefined {
+        const r = this.db.prepare("SELECT * FROM profiles WHERE name = ?").get(name) as any;
+        return r && { name: r.name, summary: r.summary, messageCount: r.message_count, lastSeq: r.last_seq, updatedAt: r.updated_at };
+    }
+
+    upsertProfile(profile: Profile): void {
+        this.db.prepare(`INSERT INTO profiles (name, summary, message_count, last_seq, updated_at)
+            VALUES (@name, @summary, @messageCount, @lastSeq, @updatedAt)
+            ON CONFLICT(name) DO UPDATE SET summary = excluded.summary, message_count = excluded.message_count,
+                last_seq = excluded.last_seq, updated_at = excluded.updated_at`).run(profile);
     }
 
     countMessages(): number {

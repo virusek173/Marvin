@@ -45,8 +45,16 @@ describe("buildHistoryTools", () => {
         expect(((await tool("get_stats").run(null)) as any).total).toBe(1);
     });
 
-    it("exposes exactly the six read-only tools with valid JSON schemas", () => {
-        expect(tools.map(t => t.name).sort()).toEqual(["get_conversation", "get_message_context", "get_messages", "get_stats", "list_channels", "search_messages"]);
+    it("get_profile returns stored profiles and tolerates junk arguments", async () => {
+        db.upsertProfile({ name: "Jacek", summary: "Lubi rowery.", messageCount: 40, lastSeq: 1, updatedAt: Date.UTC(2025, 2, 11, 12, 0) });
+        const one: any = await tool("get_profile").run({ person: "Vajrusek" });
+        expect(one).toMatchObject({ count: 1, profiles: [{ name: "Jacek", profile: "Lubi rowery.", basedOnMessages: 40, updated: "2025.03.11" }] });
+        expect(((await tool("get_profile").run(null)) as any).count).toBe(1);
+        expect(((await tool("get_profile").run({ person: 5 })) as any).count).toBe(1);
+    });
+
+    it("exposes exactly the seven read-only tools with valid JSON schemas", () => {
+        expect(tools.map(t => t.name).sort()).toEqual(["get_conversation", "get_message_context", "get_messages", "get_profile", "get_stats", "list_channels", "search_messages"]);
         for (const t of tools) expect(t.parameters).toMatchObject({ type: "object" });
     });
 

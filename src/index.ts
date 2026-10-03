@@ -11,6 +11,7 @@ const LAST_SUMMARY_FILE = `${DATA_DIR}/last_summary.json`;
 
 const croneMap = {
   EVERY_DAY_EIGHT_PM: "0 20 * * *",
+  EVERY_DAY_FOUR_AM: "0 4 * * *",
 };
 const croneOptions = {
   timezone: "Europe/Warsaw",
@@ -50,6 +51,9 @@ try {
 const roundToMinute = (ms: number): number => Math.round(ms / 60000) * 60000;
 
 console.log(`Uruchamiam podsumowanie serwera co ${SERVER_SUMMARY_INTERVAL_DAYS} dni.`);
+cron.schedule(croneMap.EVERY_DAY_FOUR_AM, () => {
+  client?.updateProfiles();
+}, croneOptions);
 cron.schedule(croneMap.EVERY_DAY_EIGHT_PM, () => {
   const lastSummaryAt = readLastSummaryAt();
   if (!lastSummaryAt) {

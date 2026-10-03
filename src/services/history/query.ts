@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { foldForSearch } from "./db.js";
-import { mapGlobalNameNameToRealName } from "../../utils/helpers.js";
+import { cutText, mapGlobalNameNameToRealName } from "../../utils/helpers.js";
 import { formatWarsaw, parseWarsaw, WARSAW_TZ } from "./time.js";
 import { renderBody } from "./context.js";
 
@@ -62,6 +62,21 @@ export interface StatsResult {
     groups: { key: string; count: number; share: number }[];
     /** True when there were more groups than `limit`. */
     truncated: boolean;
+    note?: string;
+}
+
+export interface PersonProfile {
+    name: string;
+    /** Generated, unofficial description based on the person's chat messages. */
+    profile: string;
+    basedOnMessages: number;
+    /** Date of the last refresh (YYYY.MM.DD, Warsaw time). */
+    updated: string;
+}
+
+export interface ProfilesResult {
+    count: number;
+    profiles: PersonProfile[];
     note?: string;
 }
 
@@ -140,10 +155,11 @@ const clip = (text: string, terms: string[]): string => {
     const folded = foldSameLength(text);
     const hits = terms.map(t => folded.indexOf(foldSameLength(t))).filter(i => i >= 0);
     const first = hits.length ? Math.min(...hits) : 0;
-    if (first < LIMITS.textChars - 80) return `${text.substring(0, LIMITS.textChars)}…`;
-    const start = Math.max(0, first - 150);
+    if (first < LIMITS.textChars - 80) return `${cutText(text, LIMITS.textChars)}…`;
+    let start = Math.max(0, first - 150);
+    if (/[\uDC00-\uDFFF]/.test(text[start] ?? "")) start++;
     const end = start + LIMITS.textChars;
-    return `…${text.substring(start, end)}${end < text.length ? "…" : ""}`;
+    return `…${cutText(text.substring(start), LIMITS.textChars)}${end < text.length ? "…" : ""}`;
 };
 
 /**
@@ -359,6 +375,20 @@ export class HistoryQuery {
         const truncated = groups.length > limit;
         groups = groups.slice(0, limit);
         return { ...base, groups, truncated };
+    }
+
+    /** Generated profile of one person (real name or any of their usernames), or of everyone when no person is given. */
+    profiles(person?: string): ProfilesResult {
+        const rows = this.db.prepare("SELECT name, summary, message_count, updated_at FROM profiles ORDER BY message_count DESC").all() as any[];
+        const all: PersonProfile[] = rows.map(r => ({ name: r.name, profile: r.summary, basedOnMessages: r.message_count, updated: formatWarsaw(r.updated_at).substring(0, 10) }));
+        const wanted = person?.trim();
+        if (!wanted) {
+            return { count: all.length, profiles: all, ...(all.length === 0 ? { note: "Profile osób jeszcze nie zostały wygenerowane." } : null) };
+        }
+        const names = new Set([wanted, mapGlobalNameNameToRealName[wanted]].map(n => n.toLowerCase()));
+        const found = all.filter(p => names.has(p.name.toLowerCase()));
+        if (found.length > 0) return { count: found.length, profiles: found };
+        return { count: 0, profiles: [], note: `Brak profilu dla "${wanted}". Profile mają: ${all.map(p => p.name).join(", ") || "nikt (jeszcze nie wygenerowano)"}.` };
     }
 
     listChannels(): ChannelListing[] {

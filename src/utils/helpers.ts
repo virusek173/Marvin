@@ -118,3 +118,10 @@ export const pushWithLimit = (array: any[], item: any, limit: number = 10) => {
   item && array.push(item);
   return array;
 };
+
+/** First `max` UTF-16 units of the text, without leaving half of an emoji (a lone surrogate makes the OpenAI API reject the request). */
+export const cutText = (text: string, max: number): string => {
+  if (text.length <= max) return text;
+  const end = /[\uD800-\uDBFF]/.test(text[max - 1] ?? "") ? max - 1 : max;
+  return text.substring(0, end);
+};

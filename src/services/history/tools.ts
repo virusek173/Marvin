@@ -140,6 +140,18 @@ export const buildHistoryTools = (query: HistoryQuery): ToolSpec[] => [
         },
     },
     {
+        name: "get_profile",
+        description:
+            "Zwraca wygenerowany, nieoficjalny profil osoby z serwera albo innego bota (np. Mugda, Wibot): zainteresowania, ulubione tematy, styl pisania, typowe żarty (powstaje z jej wiadomości i odświeża się raz w tygodniu). " +
+            "Użyj do pytań w stylu 'co lubi Madzia', 'jaki jest Wiktor', 'z czego żartuje Mason', 'jaka jest Mugda'. Bez parametru person zwraca wszystkie profile.",
+        parameters: {
+            type: "object",
+            properties: { person: str("Imię osoby, np. Madzia, Jacek (opcjonalnie; bez niego dostaniesz wszystkich).") },
+            required: [],
+        },
+        run: raw => query.profiles(asString(asArgs(raw).person)),
+    },
+    {
         name: "list_channels",
         description: "Lista kanałów (i wątków) w archiwum z liczbą zapisanych wiadomości. Użyj, gdy nie jesteś pewien nazwy kanału.",
         parameters: { type: "object", properties: {} },

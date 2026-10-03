@@ -22,10 +22,11 @@ import {
     getShortReactionSystemPrompt,
     getMarvinMotivationSystemPrompt,
     getPerplexityToMarvinResponsePrompt,
+    getProfileSystemPrompt,
     WAKE_UP_MESSAGE_PROMPT,
     HISTORY_TOOLS_PROMPT
 } from "../utils/prompts.js";
-import { DECIDER_MODEL_NAME, SHORT_REACTION_MODEL_NAME, SERVER_SUMMARY_MODEL_NAME } from "../utils/consts.js";
+import { DECIDER_MODEL_NAME, SHORT_REACTION_MODEL_NAME, SERVER_SUMMARY_MODEL_NAME, PROFILE_MODEL_NAME } from "../utils/consts.js";
 import { extractUrls, scrapeUrl } from "./scraper.js";
 import { MessageArchive, getExcludedChannelIds, HISTORY_DB_FILE } from "./history/archive.js";
 import { HistoryQuery } from "./history/query.js";
@@ -34,6 +35,7 @@ import { formatImageDescriptions } from "./history/mapper.js";
 import { INTERNET_NOTICE, linksNotice, isTechnicalMarvinContent } from "./history/technical.js";
 import { HistoryContext, renderLine } from "./history/context.js";
 import { HistorySync } from "./history/sync.js";
+import { ProfileService } from "./history/profiles.js";
 import { DiscordJsSource } from "./history/discordSource.js";
 import { historyLog } from "./history/log.js";
 
@@ -105,6 +107,7 @@ export class DiscordServce {
     private historySync: HistorySync | null = null;
     private historyQuery: HistoryQuery | null = null;
     private historyTools: ToolSpec[] = [];
+    private profilesRunning = false;
 
     constructor() {
         this.fallbackContext = new ContextService({});
@@ -125,6 +128,7 @@ export class DiscordServce {
                 console.log(`Logged in as ${this.client.user.tag}!`);
 
                 this.startHistorySync();
+                void this.updateProfiles();
 
                 const wakeUpMessage = await MODEL.interact(WAKE_UP_MESSAGE_PROMPT);
                 channel.send(wakeUpMessage?.content ?? "Wstałem.");
@@ -183,6 +187,35 @@ export class DiscordServce {
             this.historyTools = buildHistoryTools(this.historyQuery);
         } catch (error: any) {
             historyLog.error("nie udało się otworzyć połączenia do odczytu historii — Marvin bez narzędzi historii", error);
+        }
+    }
+
+    /**
+     * Writes/refreshes the generated person profiles (opt-in via PROFILES_ENABLED=true). Safe to call often: people whose
+     * profile is younger than a week or who wrote too little since are skipped. Never throws.
+     */
+    async updateProfiles() {
+        const db = this.archive.database;
+        if (!db || process.env.PROFILES_ENABLED !== "true" || this.profilesRunning) return;
+        this.profilesRunning = true;
+        try {
+            const service = new ProfileService(db, {
+                excludedChannelIds: EXCLUDED_CHANNEL_IDS,
+                selfId: MARVIN_ID,
+                systemPrompt: getProfileSystemPrompt(),
+                ask: async (system, user) => {
+                    const response = await MODEL.contextInteract([
+                        MODEL.messageFactory(system, 'system'),
+                        MODEL.messageFactory(user),
+                    ], PROFILE_MODEL_NAME);
+                    return typeof response?.content === "string" ? response.content : null;
+                },
+            });
+            await service.updateAll();
+        } catch (error: any) {
+            historyLog.error("aktualizacja profili osób nie powiodła się", error);
+        } finally {
+            this.profilesRunning = false;
         }
     }
 

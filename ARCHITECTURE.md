@@ -21,6 +21,7 @@ src/
 │       ├── sync.ts        Backfill + hourly catch-up + on-demand catch-up (HistorySync)
 │       ├── discordSource.ts  The only place that talks to Discord for history — fetch only
 │       ├── context.ts     HistoryContext: last 30 messages of a channel from the archive
+│       ├── profiles.ts    ProfileService: periodic per-person profiles written to the `profiles` table
 │       ├── query.ts       Read-only query layer (separate readonly connection)
 │       ├── tools.ts       The tools exposed to the model (wrap query.ts only)
 │       └── time.ts        Warsaw-time formatting/parsing
@@ -63,6 +64,11 @@ context and of the periodic summary.
   `ensureChannelFresh` catches a channel up on first use after startup.
 - **Exclusions**: `EXCLUDED_CHANNEL_IDS` (and legacy `SUMMARY_EXCLUDED_CHANNEL_IDS`) — never archived, never synced,
   purged at startup, hidden from every query. Marvin still answers there using the in-memory fallback context.
+- **Person profiles** (`profiles.ts`, opt-in `PROFILES_ENABLED=true`): `updateProfiles()` runs at startup and daily at 04:00.
+  For each author (real name, usernames merged; other bots included and flagged as bots, Marvin himself excluded) with ≥30 messages it asks the model for a ≤600-char description from the
+  person's own messages (first run: newest 500; later: old profile + up to 400 messages with `seq > last_seq`), but only
+  when the profile is ≥7 days old and ≥20 new messages exist. State lives in the `profiles` table, so restarts are safe.
+  Marvin reads them through the `get_profile` tool (`HistoryQuery.profiles`), not through the system prompt.
 - **Technical messages** (Marvin's "Zaglądam do ...", error messages) are flagged `is_technical` and left out of context.
 - **Read-only by construction**: the Discord side is fetch-only (a guard test in `npm test` fails if `src` gains a
   Discord delete/edit/moderation call); the model's tools use a separate `readonly` SQLite connection. The hard
@@ -95,7 +101,7 @@ Discord: user sends message
                     │
                     └── "MARVIN" →
                             MODEL.contextInteractWithTools([system + history rules, ...context], historyTools)
-                                ↓ model may call search_messages / get_messages / get_message_context / get_conversation / get_stats / list_channels
+                                ↓ model may call search_messages / get_messages / get_message_context / get_conversation / get_stats / get_profile / list_channels
                                 ↓ (OpenAI Responses API, reasoning "low"; max 5 rounds, then a forced answer without tools;
                                 ↓  empty / leaked-tool-call replies are retried twice, then an error is raised)
                     │
