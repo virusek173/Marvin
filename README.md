@@ -45,6 +45,7 @@ src/
 4. **History questions** ("what did Jacek write about the holiday?", "who wrote the most?", "what does Madzia like?") — Marvin uses read-only tools over the archive: full-text search, time ranges, surrounding messages and whole conversations, exact statistics (counts by author, channel, day, hour...) and generated person profiles. Set `HISTORY_SYNC_ENABLED=true` to import the whole server history; the bot role must not have Manage Messages, Manage Channels, Manage Threads, Kick, Ban or Administrator
 5. **Person profiles** (opt-in, `PROFILES_ENABLED=true`) — short descriptions of each regular participant (and the other bots), generated from their archived messages and refreshed when they are a week old and enough new messages arrived
 6. **Monthly statistics report** (opt-in, `MONTHLY_REPORT_ENABLED=true`) — on the 1st of the month at 20:00 (Warsaw) Marvin posts the previous month's report to the bots channel: top authors, loudest days, busiest hour, channels, most common words and phrases as bar charts with exact numbers, plus his commentary and award titles. `MONTHLY_REPORT_FORCE_MONTH=YYYY-MM` posts a chosen month once at startup (for testing)
+7. **Emoji reactions** — each human message has a 2% chance of a reaction: one cheap model call reads only that message and picks the best-fitting Unicode or server custom emoji. Needs the **Add Reactions** permission on the bot role
 
 ## Configuration
 

@@ -28,6 +28,7 @@ src/
 │       └── time.ts        Warsaw-time formatting/parsing
 └── utils/
     ├── prompts.ts         All system prompts and prompt factories
+    ├── emojiReaction.ts   Spontaneous emoji reactions: prompt, answer validation, the only message.react() call
     ├── helpers.ts         pushWithLimit, mapGlobalNameNameToRealName, exceptionHandler, splitForDiscord, moveCitesToLineStart
     └── consts.ts          Model name constants
 ```
@@ -69,7 +70,7 @@ context and of the periodic summary.
   For each author (real name, usernames merged; other bots included and flagged as bots, Marvin himself excluded) with ≥30 messages it asks the model for a ≤600-char description from the
   person's own messages (first run: newest 500; later: old profile + up to 400 messages with `seq > last_seq`), but only
   when the profile is ≥7 days old and ≥20 new messages exist. State lives in the `profiles` table, so restarts are safe.
-  Marvin reads them through the `get_profile` tool (`HistoryQuery.profiles`), not through the system prompt.
+  Marvin reads them through the `get_profile` tool (`HistoryQuery.profiles`). The main system prompt does not contain profiles.
 - **Technical messages** (Marvin's "Zaglądam do ...", error messages) are flagged `is_technical` and left out of context.
 - **Read-only by construction**: the Discord side is fetch-only (a guard test in `npm test` fails if `src` gains a
   Discord delete/edit/moderation call); the model's tools use a separate `readonly` SQLite connection. The hard
@@ -88,7 +89,8 @@ Discord: user sends message
             ↓
         [message mentions @Marvin or is reply to Marvin?]
             │
-            ├── NO → end
+            ├── NO → 2% roll: one cheap model call on this single message → optional emoji reaction
+            │        (Unicode or server custom emoji; utils/emojiReaction.ts; needs Add Reactions; not archived)
             │
             └── YES → context = last 30 non-technical messages of the channel from the DB
                     decider.contextInteract([DECIDER_SYSTEM_PROMPT, ...context])

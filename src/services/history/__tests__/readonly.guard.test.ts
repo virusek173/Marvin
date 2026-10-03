@@ -17,12 +17,17 @@ const files = sourceFiles(SRC).map(file => ({ file: path.relative(SRC, file), co
 // Marvin must never delete, edit or moderate anything on the Discord server. Role permissions are the hard guarantee;
 // this test makes sure the code itself never even tries.
 const FORBIDDEN_DISCORD_CALLS =
-    /\.(bulkDelete|ban|unban|kick|timeout|setName|setTopic|setNickname|pin|unpin|react|crosspost|setArchived|setLocked|createInvite|edit|setPermissions)\(|permissionOverwrites|\.(roles|bans|members)\.(add|remove|create|edit|delete)\(/;
+    /\.(bulkDelete|ban|unban|kick|timeout|setName|setTopic|setNickname|pin|unpin|crosspost|setArchived|setLocked|createInvite|edit|setPermissions)\(|permissionOverwrites|\.(roles|bans|members)\.(add|remove|create|edit|delete)\(/;
 
 describe("read-only guard", () => {
     it("has no Discord delete/edit/moderation calls anywhere in src", () => {
         const offenders = files.filter(f => FORBIDDEN_DISCORD_CALLS.test(f.code)).map(f => f.file);
         expect(offenders).toEqual([]);
+    });
+
+    it("adds emoji reactions only from utils/emojiReaction.ts (the one deliberate, non-destructive write; needs Add Reactions)", () => {
+        const offenders = files.filter(f => /\.react\(/.test(f.code)).map(f => f.file);
+        expect(offenders).toEqual([path.join("utils", "emojiReaction.ts")]);
     });
 
     it("only calls .delete( on in-memory Map/Set collections declared in the same file", () => {

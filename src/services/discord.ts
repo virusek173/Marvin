@@ -19,7 +19,6 @@ import {
     IMAGE_LAZY_REPLIES,
     getServerSummarySystemPrompt,
     getBotExchangeExhaustedSystemPrompt,
-    getShortReactionSystemPrompt,
     getMarvinMotivationSystemPrompt,
     getPerplexityToMarvinResponsePrompt,
     getProfileSystemPrompt,
@@ -27,6 +26,7 @@ import {
     WAKE_UP_MESSAGE_PROMPT,
     HISTORY_TOOLS_PROMPT
 } from "../utils/prompts.js";
+import { CustomEmoji, getEmojiReactionSystemPrompt, isReactable, parseEmojiChoice, shouldRollReaction, isMissingPermission, addReaction } from "../utils/emojiReaction.js";
 import { DECIDER_MODEL_NAME, SHORT_REACTION_MODEL_NAME, SERVER_SUMMARY_MODEL_NAME, PROFILE_MODEL_NAME } from "../utils/consts.js";
 import { extractUrls, scrapeUrl } from "./scraper.js";
 import { MessageArchive, getExcludedChannelIds, HISTORY_DB_FILE } from "./history/archive.js";
@@ -80,9 +80,6 @@ const grok = new Grok();
 const decider = new OpenAi();
 const perplexity = new Perplexity();
 const MODEL = openai;
-const SHORT_REACTION_CHANCE = 0.01;
-const SHORT_REACTION_COOLDOWN = 30;
-let shortReactionCooldownCounter = 0;
 const botExchangeCounters = new Map<string, number>();
 const BOT_EXCHANGE_LIMIT = 2;
 const SERVER_SUMMARY_FALLBACK_DAYS = 3;
@@ -110,6 +107,7 @@ export class DiscordServce {
     private historyQuery: HistoryQuery | null = null;
     private historyTools: ToolSpec[] = [];
     private profilesRunning = false;
+    private emojiReactionsDisabled = false;
 
     constructor() {
         this.fallbackContext = new ContextService({});
@@ -164,16 +162,8 @@ export class DiscordServce {
 
             botExchangeCounters.delete(channelId);
 
-            if (shortReactionCooldownCounter > 0) shortReactionCooldownCounter -= 1;
-
-            const shortReactionRoll = !isMentioned && Math.random() < SHORT_REACTION_CHANCE;
-
-            if (shortReactionRoll && shortReactionCooldownCounter === 0) {
-                shortReactionCooldownCounter = SHORT_REACTION_COOLDOWN;
-                await this.handleShortReaction(message);
-            } else if (isMentioned) {
-                await this.handleMentioned(message);
-            }
+            if (isMentioned) await this.handleMentioned(message);
+            else void this.maybeReactWithEmoji(message);
         });
 
         this.client.login(DISCORD_CLIENT_TOKEN);
@@ -289,6 +279,29 @@ export class DiscordServce {
         return this.historyContext.getContext(message.channelId, parentId, message.id);
     }
 
+    /** Rarely (EMOJI_REACTION_CHANCE) adds one emoji reaction to a human message, judged from that single message. Never throws into the message flow. */
+    private async maybeReactWithEmoji(message: any) {
+        if (this.emojiReactionsDisabled || !shouldRollReaction() || !isReactable(message.content)) return;
+        try {
+            const customEmojis: CustomEmoji[] = [...(message.guild?.emojis?.cache?.values() ?? [])]
+                .filter((emoji: any) => emoji.available !== false)
+                .map((emoji: any) => ({ id: emoji.id, name: emoji.name }));
+            const response = await MODEL.contextInteract([
+                MODEL.messageFactory(getEmojiReactionSystemPrompt(customEmojis), "system"),
+                MODEL.messageFactory(`${mapGlobalNameNameToRealName[message.author.globalName]}: ${message.content}`),
+            ], SHORT_REACTION_MODEL_NAME);
+            const emoji = parseEmojiChoice(response?.content, customEmojis);
+            if (emoji) await addReaction(message, emoji);
+        } catch (error: any) {
+            if (isMissingPermission(error)) {
+                this.emojiReactionsDisabled = true;
+                console.log("Brak uprawnienia Add Reactions — reakcje emoji wyłączone do restartu.");
+                return;
+            }
+            console.log("err (reakcja emoji): ", error?.message);
+        }
+    }
+
     /** Handles a message from another bot. Responds up to BOT_EXCHANGE_LIMIT times per channel, then sends a generated closing line and goes silent until a human resets the counter. */
     async handleBotMessage(message: any) {
         const { channelId } = message;
@@ -394,23 +407,6 @@ export class DiscordServce {
                 return !!sentAt && sentAt.getTime() > sinceMs;
             })
             .join('\n');
-    }
-
-    /** Responds with a short (≤4 word) AI-generated reaction based on the last message in context. */
-    async handleShortReaction(message: any) {
-        try {
-            message.channel.sendTyping();
-            const response = await MODEL.contextInteract([
-                MODEL.messageFactory(getShortReactionSystemPrompt(), 'system'),
-                ...stripImages(await this.getContext(message)),
-            ], SHORT_REACTION_MODEL_NAME);
-            if (response) {
-                const content = stripLeadingTimestampPrefix(response.content ?? "");
-                if (content.trim()) await message.reply(content.substring(0, 1950));
-            }
-        } catch (error: any) {
-            return exceptionHandler(error, message);
-        }
     }
 
     /** Handles a message that directly mentions or replies to Marvin. Routes to MARVIN or PERPLEXITY. */
