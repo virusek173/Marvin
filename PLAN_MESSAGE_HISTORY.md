@@ -1,250 +1,249 @@
-# Plan: archiwum wiadomości jako jedyne źródło historii i kontekstu Marvina
+# Plan: message archive as the single source of history and context for Marvin
 
-Status: plan, nic jeszcze nie zaimplementowane. Branch: `feat/message-history-search`.
-Wersja po drugiej turze ustaleń (usunięcie codziennego 6:00, opisy obrazów, jedna zmienna wykluczeń,
-kontekst Marvina z bazy zamiast z `context.json`).
+Status: implemented on branch `feat/message-history-search` (see `ARCHITECTURE.md` and `CLAUDE.md` for the current
+design). This file is the original design record, kept for the reasoning behind the decisions. Later additions
+(person profiles, monthly report, emoji reactions) are documented in `CLAUDE.md`, not here.
+It reflects the second round of decisions (removal of the daily 6:00 job, image descriptions, one exclusion
+variable, Marvin's context read from the database instead of `context.json`).
 
-## Cel
+## Goal
 
-1. Dać Marvinowi możliwość odpowiadania na pytania o historię czatu ("kto pisał o X", "co było wczoraj po 18:00").
-2. Baza SQLite staje się jedynym miejscem, gdzie żyje historia czatu: z niej czytają zarówno wyszukiwanie historii,
-   jak i bieżący kontekst rozmowy Marvina (zamiast pamięci procesu zapisywanej do `data/context.json`).
+1. Let Marvin answer questions about chat history ("who wrote about X", "what happened yesterday after 18:00").
+2. Make the SQLite database the one place where chat history lives: both history search and Marvin's current
+   conversation context are read from it (instead of process memory persisted to `data/context.json`).
 
-Zamiast generycznego MCP Discorda: lokalne archiwum wiadomości w SQLite z indeksem pełnotekstowym (FTS5)
-oraz kilka własnych funkcji tylko do odczytu, wystawionych głównemu modelowi (tool calling).
+Instead of a generic Discord MCP: a local message archive in SQLite with a full-text index (FTS5) and a few custom
+read-only functions exposed to the main model (tool calling).
 
-## Dlaczego nie MCP Discorda
+## Why not a Discord MCP
 
-- Marvin ma już zalogowanego klienta discord.js z uprawnieniami; MCP to drugi proces z tym samym tokenem.
-- Zdalny MCP w Responses API OpenAI wymaga publicznego endpointu HTTPS, czyli wystawienia historii czatu na zewnątrz.
-- Gotowe serwery MCP mają zwykle narzędzia zapisu/moderacji (send, delete, ban). Chcemy tylko odczyt.
-- API Discorda nie daje botom wyszukiwania pełnotekstowego; trzeba by skanować kanały (wolno, rate limity, tokeny).
+- Marvin already has a logged-in discord.js client with permissions; an MCP would be a second process with the same token.
+- A remote MCP in the OpenAI Responses API needs a public HTTPS endpoint, i.e. exposing the chat history externally.
+- Ready-made MCP servers usually include write/moderation tools (send, delete, ban). We want read-only access.
+- The Discord API gives bots no full-text search; channels would have to be scanned (slow, rate limits, tokens).
 
-## Co daje SQLite + FTS5
+## What SQLite + FTS5 gives us
 
-- Trwała historia (bez limitu 30 wiadomości FIFO), przetrwa restarty (wolumin `marvin_data`).
-- Szybkie szukanie po słowach: frazy, OR/NOT, prefiksy (`rower*`), NEAR, ranking `bm25`.
-- Filtry SQL razem z tekstem: autor, kanał, zakres dat; zliczanie; kontekst wokół wiadomości.
-- Ograniczenie: brak rozumienia znaczenia/fleksji (tokenizer `unicode61` + `remove_diacritics`, prefiksy częściowo pomagają).
-  Wyszukiwanie semantyczne wymagałoby embeddingów — poza zakresem.
-- Biblioteka: `better-sqlite3` (natywna, sprawdzić build na `node:22.0.0-alpine`) albo wbudowany `node:sqlite`
-  (w Node 22.0.0 eksperymentalny, FTS5 nie zawsze włączone). Do rozstrzygnięcia eksperymentem na początku.
+- Persistent history (no 30-message FIFO limit) that survives restarts (`marvin_data` volume).
+- Fast word search: phrases, OR/NOT, prefixes (`rower*`), NEAR, `bm25` ranking.
+- SQL filters combined with text: author, channel, date range; counting; context around a message.
+- Limitation: no understanding of meaning or inflection (`unicode61` tokenizer + `remove_diacritics`, prefixes help partly).
+  Semantic search would need embeddings — out of scope.
+- Library: `better-sqlite3` (native, check the build on `node:22.0.0-alpine`) or the built-in `node:sqlite`
+  (experimental in Node 22.0.0, FTS5 not always enabled). To be settled by an experiment at the start.
 
-## Ustalenia
+## Decisions
 
-- Archiwizujemy wszystkie wiadomości, także od botów i odpowiedzi Marvina.
-- Backfill: zaciągnięcie wszystkich wiadomości od początku historii.
-- Przy każdym uruchomieniu: sprawdzenie, czy na jakimś kanale są wiadomości nowsze niż w bazie, i dogranie ich.
-- Dostęp wyłącznie do odczytu (nic nie może być usunięte/zmienione na serwerze).
-- Edycje i usunięcia wiadomości: na razie świadomie pomijamy (znane ograniczenie: usunięta wiadomość zostaje
-  w archiwum, edytowana ma starą treść).
-- Dużo logowania (`console.warn` / `console.error`), żeby szybko dojść do przyczyny awarii.
-- Bez limitu retencji na start.
-- **Usuwamy codzienne niszczenie i odtwarzanie klienta o 6:00** (nieużywane). Klient Discorda i `DiscordServce` powstają
-  raz przy starcie procesu, więc baza, blokada synchronizacji i timery mogą żyć w instancji.
-- **Obrazy:** wiadomości przychodzące na żywo mają obraz zamieniony na tekstowy opis (jak dziś w
-  `userResponseFactory`) i ten opis jest zapisywany w bazie razem z treścią. Backfill NIE opisuje obrazów (koszt):
-  zapisuje tylko znacznik z typem/nazwą załącznika. Adresy CDN wygasają, więc ich nie traktujemy jako trwałych.
-- **Jedna zmienna wykluczeń kanałów** zamiast dwóch (patrz niżej).
-- **Marvin zapisuje się do bazy tak samo jak każdy inny autor**, a jego kontekst rozmowy jest czytany z bazy.
-  `data/context.json` przestaje być potrzebny.
+- Archive all messages, including those from bots and Marvin's own replies.
+- Backfill: pull all messages from the beginning of the history.
+- On every start: check whether any channel has messages newer than the database and catch them up.
+- Read-only access (nothing may be deleted or changed on the server).
+- Message edits and deletions: deliberately ignored for now (known limitation: a deleted message stays in the
+  archive, an edited one keeps its old text).
+- Plenty of logging (`console.warn` / `console.error`) to find the cause of failures quickly.
+- No retention limit at the start.
+- **Remove the daily destroy-and-recreate of the client at 6:00** (unused). The Discord client and `DiscordServce` are
+  created once per process start, so the database, the sync lock and the timers can live in the instance.
+- **Images:** incoming live messages have the image turned into a text description (as today in
+  `userResponseFactory`) and that description is stored in the database with the content. Backfill does NOT describe
+  images (cost): it stores only a marker with the attachment type/name. CDN URLs expire, so they are not treated as permanent.
+- **One channel-exclusion variable** instead of two (see below).
+- **Marvin writes to the database like any other author**, and his conversation context is read from the database.
+  `data/context.json` is no longer needed.
 
-## Ustalenia z kodu, które wpływają na plan
+## Findings from the code that affect the plan
 
-- `index.ts` dotąd co dzień o 6:00 niszczył klienta i tworzył nowego. Po usunięciu tego crona znika też
-  skutek uboczny: data w system prompcie Marvina jest liczona w konstruktorze `DiscordServce`, więc bez codziennego
-  odtwarzania zestarzałaby się. Prompt systemowy trzeba budować per żądanie (albo odświeżać datę).
-- Handler `messageCreate` zaczyna od pominięcia wiadomości Marvina (`return` po nazwie użytkownika). Zapis do
-  archiwum musi stanąć przed tym `return`, żeby odpowiedzi Marvina też trafiały do bazy (wracają do bota jako
-  zwykłe zdarzenia).
-- Dziś do kontekstu trafia tylko finalna odpowiedź Marvina. Wysyłane na kanał komunikaty techniczne
-  ("Zaglądam do Internetu", leniwe odpowiedzi na obrazy, komunikat "Wywaliłem się...") nie są w kontekście.
-  Po przejściu na bazę wszystkie wiadomości Marvina trafią do archiwum, więc te techniczne trzeba oznaczyć i
-  wykluczać z kontekstu dla modelu (patrz Etap 3).
-- Kod bota wysyła na serwer wyłącznie `reply`, `send` i `sendTyping`; nic usuwającego ani moderującego.
-- Intents: `Guilds`, `GuildMessages`, `MessageContent` — wystarczają do zapisu live i backfillu.
-- `Message` w `openai.ts` zna tylko role system/user/assistant; tool calling wymaga rozszerzenia typu.
-- Nazwy w Discordzie ≠ imiona z ekipy (Hardik/Dombear = Domin). Pytania będą po imieniu, więc wyszukiwanie
-  musi tłumaczyć imię na identyfikatory autorów.
+- `index.ts` used to destroy the client and create a new one every day at 6:00. Removing that cron also removes a side
+  effect: the date in Marvin's system prompt was computed in the `DiscordServce` constructor, so without the daily
+  re-creation it would go stale. The system prompt has to be built per request (or the date refreshed).
+- The `messageCreate` handler starts by skipping Marvin's own messages (`return` after the username check). Writing
+  to the archive must come before that `return`, so Marvin's replies also reach the database (they come back to the bot
+  as ordinary events).
+- Today only Marvin's final reply goes into the context. Technical messages sent to the channel
+  ("Zaglądam do Internetu", lazy replies to images, the "Wywaliłem się..." message) are not in the context.
+  After the move to the database all of Marvin's messages land in the archive, so the technical ones must be flagged
+  and excluded from the model's context (see Stage 3).
+- The bot code sends only `reply`, `send` and `sendTyping` to the server; nothing that deletes or moderates.
+- Intents: `Guilds`, `GuildMessages`, `MessageContent` — enough for live writes and backfill.
+- `Message` in `openai.ts` knows only the system/user/assistant roles; tool calling requires extending the type.
+- Names on Discord ≠ the crew's first names (Hardik/Dombear = Domin). Questions will use first names, so search
+  has to translate a first name into author ids.
 
-## Etapy
+## Stages
 
-### Etap 0: sprzątanie (usunięcie crona 6:00)
+### Stage 0: cleanup (remove the 6:00 cron)
 
-- `index.ts`: usunąć cron 6:00 i odtwarzanie klienta; klient tworzony raz przy starcie. Usunąć zmienną `WITH_CRON`
-  i jej wzmianki. Cron podsumowania 20:00 zostaje bez zmian.
-- `discord.ts`: prompt systemowy z aktualną datą budowany per żądanie (żeby data nie zastarzała).
-- Martwy kod porannego cytatu (generowanie cytatu przy starcie, `quotesArray`, `getFirstMotivionUserMessagePrompt`,
-  gałąź "z wiadomością powitalną" w handlerze `ready`) — do usunięcia (decyzja podjęta).
-  Wiadomość "wstałem" po restarcie zostaje.
-- Dokumentacja (`CLAUDE.md`, `ARCHITECTURE.md`) poprawiona o brak crona 6:00.
+- `index.ts`: remove the 6:00 cron and client re-creation; the client is created once at start. Remove the `WITH_CRON`
+  variable and its mentions. The 20:00 summary cron stays unchanged.
+- `discord.ts`: system prompt with the current date built per request (so the date does not go stale).
+- Dead morning-quote code (quote generation at start, `quotesArray`, `getFirstMotivionUserMessagePrompt`, the
+  "with welcome message" branch in the `ready` handler) — to be removed (decision made).
+  The "I'm up" message after a restart stays.
+- Documentation (`CLAUDE.md`, `ARCHITECTURE.md`) corrected for the missing 6:00 cron.
 
-### Etap 1: baza, schemat i zapis na żywo
+### Stage 1: database, schema and live writes
 
-- Zależność SQLite w `package.json`; najpierw eksperyment na obrazie alpine. Jeśli brak gotowych binarek,
-  `Dockerfile` dostaje narzędzia do kompilacji.
-- Nowy moduł bazy: plik w `data/` (staging ma osobny wolumin, więc osobną bazę), tryb WAL, schemat tworzony
-  automatycznie:
-  - tabela wiadomości z kluczem głównym = id wiadomości Discorda;
-  - tabela stanu synchronizacji (jeden wiersz na kanał/wątek: kursor, czas ostatniej próby, ostatni błąd);
-  - indeks pełnotekstowy FTS5 utrzymywany automatycznie przy wstawianiu.
-- Pola wiadomości: id, kanał, wątek nadrzędny, autor (id + surowa nazwa z Discorda), flaga bota, treść,
-  spłaszczony tekst embedów, opis/znacznik załączników, id wiadomości-rodzica (odpowiedź), typ wiadomości
-  (zwykła/systemowa), flaga "techniczna" (komunikat Marvina niewchodzący do kontekstu), czas w UTC.
-- Imię z ekipy mapowane dopiero przy odczycie (zmiana mapowania w `helpers.ts` działa wstecz).
-- Podpięcie w `discord.ts`: w `messageCreate`, przed pominięciem własnych wiadomości, zapis do archiwum
-  (po zbudowaniu opisu obrazu dla wiadomości z obrazami). Otoczone try/catch — tylko logowanie, awaria bazy nie
-  blokuje odpowiedzi.
-- Wyłączenie wykluczonych kanałów z zapisu (patrz Konfiguracja).
+- SQLite dependency in `package.json`; first an experiment on the alpine image. If there are no prebuilt binaries,
+  the `Dockerfile` gets build tools.
+- New database module: a file in `data/` (staging has its own volume, hence its own database), WAL mode, schema
+  created automatically:
+  - messages table with the primary key = Discord message id;
+  - sync state table (one row per channel/thread: cursor, last attempt time, last error);
+  - FTS5 full-text index maintained automatically on insert.
+- Message fields: id, channel, parent thread, author (id + raw Discord name), bot flag, content, flattened embed
+  text, attachment description/marker, parent message id (reply), message type (regular/system), "technical" flag
+  (a Marvin message that does not go into the context), time in UTC.
+- Crew first names are mapped only on read (a change of the mapping in `helpers.ts` works retroactively).
+- Hook-up in `discord.ts`: in `messageCreate`, before skipping own messages, write to the archive (after building the
+  image description for messages with images). Wrapped in try/catch — only logging, a database failure does not
+  block the reply.
+- Excluded channels are left out of writes (see Configuration).
 
-### Etap 2: backfill i dogrywanie
+### Stage 2: backfill and catch-up
 
-- Nowy moduł synchronizacji, wołany po zdarzeniu `ready` i cyklicznie (np. co godzinę). Blokada przed
-  równoległymi przebiegami.
-- Lista kanałów: tekstowe, ogłoszeniowe, głosowe z czatem, aktywne wątki, archiwalne wątki, posty na forach.
-  Nowe kanały/wątki automatycznie trafiają na pełny import (brak kursora). Archiwalne wątki prywatne wymagają
-  Manage Threads, którego bot celowo nie ma — pomijane z ostrzeżeniem (świadomy kompromis read-only vs kompletność).
-- Pętla dla kanału: strona 100 wiadomości nowszych niż kursor, sortowanie rosnąco (Discord zwraca malejąco),
-  zapis strony i przesunięcie kursora w jednej transakcji, powtarzanie do pustej strony. Pierwszy import
-  startuje od najstarszej wiadomości kanału. Przerwanie w środku nic nie psuje.
-- Strony małe i z oddawaniem sterowania, bo zapis jest synchroniczny i nie może blokować połączenia z Discordem.
-- Kursor przesuwa się WYŁĄCZNIE po zatwierdzonej paczce z dogrywania; zapis live go nie rusza (inaczej luka po
-  przerwie w działaniu zostałaby pominięta na stałe).
-- Wstawianie z `INSERT OR IGNORE` po id: duplikaty z zapisu live są pomijane i nic nie jest nadpisywane
-  (bogatszy wiersz live, np. z opisem obrazu, wygrywa z backfillem).
-- Dogrywanie na żądanie: przy pierwszym użyciu kanału po starcie (np. gdy ktoś woła Marvina) kanał jest
-  najpierw szybko dociągany; jeśli kanał nie ma jeszcze żadnych danych, pobieramy najnowsze wiadomości bez
-  ruszania kursora, żeby kontekst nie był pusty zanim backfill do niego dojdzie.
-- Błąd w jednym kanale zapisuje się w jego wierszu stanu i nie przerywa reszty. Błędy przejściowe (rate limit,
-  5xx, zerwane połączenie): ponowienia z rosnącym odstępem; trwałe (403, 404): bez ponowień.
-- Pobieranie z Discorda ukryte za małym interfejsem, żeby w testach podstawić sztuczne strony.
-- Znacznik "techniczna" dla komunikatów Marvina ustawiany tym samym mechanizmem w live i w backfillu:
-  dopasowanie do znanej listy stałych fraz (leniwe odpowiedzi, komunikaty o Internecie/linkach, prefiks
+- New sync module, called after the `ready` event and periodically (e.g. hourly). A lock prevents parallel runs.
+- Channel list: text, announcement, voice with chat, active threads, archived threads, forum posts. New
+  channels/threads automatically get a full import (no cursor). Private archived threads need Manage Threads, which
+  the bot deliberately lacks — skipped with a warning (a conscious trade-off between read-only and completeness).
+- Per-channel loop: a page of 100 messages newer than the cursor, sorted ascending (Discord returns descending),
+  page write and cursor advance in one transaction, repeated until an empty page. The first import starts from the
+  channel's oldest message. An interruption in the middle breaks nothing.
+- Small pages that yield control, because the write is synchronous and must not block the Discord connection.
+- The cursor moves ONLY after a committed catch-up batch; live writes do not touch it (otherwise a gap after
+  downtime would be skipped permanently).
+- Inserts use `INSERT OR IGNORE` by id: duplicates from live writes are skipped and nothing is overwritten
+  (the richer live row, e.g. with an image description, wins over the backfill).
+- On-demand catch-up: on first use of a channel after start (e.g. when someone calls Marvin) the channel is first
+  quickly caught up; if the channel has no data yet, we fetch the newest messages without touching the cursor, so
+  the context is not empty before the backfill reaches it.
+- An error in one channel is recorded in its state row and does not stop the rest. Transient errors (rate limit,
+  5xx, dropped connection): retries with growing delay; permanent ones (403, 404): no retries.
+- Discord fetching hidden behind a small interface so tests can plug in fake pages.
+- The "technical" flag for Marvin's messages is set by the same mechanism live and in backfill:
+  matching against a known list of constant phrases (lazy replies, messages about the Internet/links, the prefix
   "Wywaliłem się...").
 
-### Etap 3: kontekst Marvina z bazy (koniec z `context.json`)
+### Stage 3: Marvin's context from the database (goodbye `context.json`)
 
-- `ContextService` zastąpiony warstwą czytającą z bazy: kontekst kanału = ostatnie N wiadomości (domyślnie 30)
-  tego kanału, bez oznaczonych jako techniczne, zamienione na format OpenAI: wiadomości Marvina jako
-  `assistant`, wszyscy pozostali (także inne boty) jako `user`, z prefiksem `[czas] Imię: treść` jak dziś.
-- Usunięte: wczytywanie `context.json` w `ready`, wszystkie wywołania zapisu pliku, ręczne `pushWithLimit` do
-  kontekstu. Odpowiedź Marvina trafia do bazy z pętli zdarzeń (Etap 1), nie z kodu odpowiedzi.
-- Kolejność w handlerze: najpierw zapis wiadomości przychodzącej (z opisem obrazu), potem odczyt kontekstu.
-- Kanały wykluczone nie są w bazie, więc Marvin potrzebuje tam małego kontekstu w pamięci (FIFO, niezapisywanego
-  na dysk). To samo FIFO służy jako awaryjny zapas, gdy baza jest niedostępna (głośne błędy w logu, bot dalej
-  odpowiada).
-- Stary plik `context.json` zostaje w wolumenie nieużywany (można go usunąć ręcznie). Nie ma migracji —
-  historię odtworzy backfill.
-- Kolejność etapów: ten etap dopiero po Etapie 2, żeby baza miała kompletną historię zanim kontekst zacznie z niej
-  korzystać.
+- `ContextService` replaced by a layer reading from the database: channel context = the last N messages (default 30)
+  of that channel, excluding those flagged technical, converted to the OpenAI format: Marvin's messages as
+  `assistant`, everyone else (other bots too) as `user`, with the prefix `[time] Name: text` as today.
+- Removed: loading `context.json` in `ready`, all file writes, manual `pushWithLimit` into the context. Marvin's reply
+  gets into the database from the event loop (Stage 1), not from the reply code.
+- Order in the handler: first write the incoming message (with the image description), then read the context.
+- Excluded channels are not in the database, so Marvin needs a small in-memory context there (FIFO, not written to
+  disk). The same FIFO serves as an emergency fallback when the database is unavailable (loud errors in the log, the
+  bot keeps answering).
+- The old `context.json` stays in the volume unused (it can be removed by hand). No migration — the backfill
+  restores the history.
+- Stage order: this stage only after Stage 2, so the database has the complete history before the context starts using it.
 
-### Etap 4: warstwa zapytań (tylko do odczytu)
+### Stage 4: query layer (read-only)
 
-- Nowy moduł odczytu z osobnym połączeniem otwartym w trybie `readonly`.
-- Operacje: szukanie po słowach z filtrami (autor wskazany imieniem, kanał, zakres dat) z rankingiem trafności;
-  wiadomości z przedziału czasu; kontekst wokół wskazanej wiadomości; lista kanałów z nazwami.
-- Zasady: żadnego surowego SQL od modelu (tylko parametryzowane zapytania); twarde limity liczby i długości
-  wyników; wykluczone kanały zawsze odfiltrowane (nawet gdy coś starego zostało w bazie); imię → identyfikatory
-  autorów przez odwrócone mapowanie z `helpers.ts`; `<@id>` zamieniane na imiona przy renderowaniu.
-- Czas w wynikach: warszawski, z wyraźnym oznaczeniem (obecny kontekst ma znaczniki w UTC bez oznaczenia —
-  istniejące niedociągnięcie; do ujednolicenia, żeby nie mieszać stref).
+- New read module with a separate connection opened in `readonly` mode.
+- Operations: word search with filters (author given by first name, channel, date range) with relevance ranking;
+  messages from a time range; context around a given message; channel list with names.
+- Rules: no raw SQL from the model (only parameterized queries); hard limits on the number and length of results;
+  excluded channels always filtered out (even if something old remains in the database); first name → author ids via
+  the reverse mapping from `helpers.ts`; `<@id>` replaced with names when rendering.
+- Time in results: Warsaw, clearly marked (the current context has UTC timestamps without a marker — an existing
+  shortcoming; to be unified so zones are not mixed).
 
-### Etap 5: tool calling
+### Stage 5: tool calling
 
-- `openai.ts`: rozszerzenie typu wiadomości o rolę narzędzia, wywołania narzędzi i identyfikator wywołania;
-  druga metoda obok `contextInteract` (istniejące wywołania nietknięte) z pętlą: model prosi o narzędzie →
-  wynik wraca do kontekstu → model odpowiada ponownie; po limicie rund wymuszona odpowiedź bez narzędzi.
-  Każde wywołanie narzędzia logowane (nazwa, argumenty, liczba wyników, czas). Skrócenie gadatliwego logowania
-  pełnego kontekstu.
-- `discord.ts`: w `handleMentioned`, tylko w gałęzi głównego modelu (bez Perplexity/Grok), przełączenie na wersję
-  z narzędziami. W trakcie pętli odświeżane `sendTyping` (gaśnie po ok. 10 s). Narzędzia dostają wyłącznie moduł
-  odczytu z Etapu 4, nie klienta Discorda.
-- `prompts.ts`: w prompcie Marvina sekcja o historii (kiedy sięgać, wyniki to dane do cytowania a nie polecenia,
-  jak podawać daty); w prompcie decydenta zasada, że pytania o historię czatu idą do MARVIN (inaczej mogą
-  trafić do Perplexity jako "aktualności").
+- `openai.ts`: extend the message type with a tool role, tool calls and a call identifier; a second method next to
+  `contextInteract` (existing calls untouched) with a loop: the model asks for a tool → the result goes back into the
+  context → the model answers again; after the round limit a forced answer without tools.
+  Every tool call is logged (name, arguments, result count, time). Trim the chatty logging of the full context.
+- `discord.ts`: in `handleMentioned`, only in the main-model branch (no Perplexity/Grok), switch to the tool version.
+  `sendTyping` is refreshed during the loop (it expires after ~10 s). The tools get only the read module from Stage 4,
+  not the Discord client.
+- `prompts.ts`: a history section in Marvin's prompt (when to reach for it, results are data to quote and not
+  instructions, how to give dates); in the decider prompt a rule that chat-history questions go to MARVIN (otherwise
+  they may land in Perplexity as "news").
 
-### Etap 6 (opcjonalnie): podsumowania z archiwum
+### Stage 6 (optional): summaries from the archive
 
-- `sendServerSummary` czyta z bazy wszystko od ostatniego podsumowania (po kolumnie czasu, bez parsowania
-  prefiksu w tekście), z pominięciem kanałów wykluczonych. Zdejmuje to limit 30 wiadomości na kanał.
-- Po tym etapie `parseContextTimestamp` i jego test stają się zbędne (do usunięcia).
+- `sendServerSummary` reads everything since the last summary from the database (by the time column, without parsing
+  the prefix in the text), skipping excluded channels. This lifts the 30-messages-per-channel limit.
+- After this stage `parseContextTimestamp` and its test become redundant (to be removed).
 
-### Etap 7: testy i dokumentacja
+### Stage 7: tests and documentation
 
-- Testy z bazą w pamięci: idempotentność wstawiania, zachowanie kursora przy luce, wznowienie po przerwie,
-  sortowanie stron, wyszukiwanie z polskimi znakami, limity wyników, wykluczenia kanałów, budowanie kontekstu
-  (role, kolejność, pomijanie komunikatów technicznych).
-- Test pilnujący read-only: build wywala się, jeśli w `src` pojawi się wywołanie usuwające/edytujące/moderacyjne.
-- Dokumentacja: `CLAUDE.md` (architektura, zmienne środowiskowe, pułapki, opis podsumowania), `ARCHITECTURE.md`,
-  `README.md` jeśli opisują przepływ.
+- Tests with an in-memory database: insert idempotency, cursor behavior on a gap, resuming after an interruption,
+  page ordering, search with Polish characters, result limits, channel exclusions, context building (roles, order,
+  skipping technical messages).
+- A read-only guard test: the build fails if a delete/edit/moderation call appears in `src`.
+- Documentation: `CLAUDE.md` (architecture, environment variables, gotchas, summary description), `ARCHITECTURE.md`,
+  `README.md` if they describe the flow.
 
-## Konfiguracja
+## Configuration
 
-- Jedna zmienna wykluczeń kanałów: `EXCLUDED_CHANNEL_IDS` (lista oddzielona przecinkami) zastępuje dotychczasową
-  `SUMMARY_EXCLUDED_CHANNEL_IDS`. Wykluczony kanał: nic nie jest archiwizowane, backfill go pomija, nie występuje
-  w wyszukiwaniu ani podsumowaniach; Marvin nadal może tam odpowiadać, korzystając z kontekstu w pamięci
-  (niezapisywanego). Zmianę nazwy zmiennej w `.env` / `.env.example` robi użytkownik; ja aktualizuję
-  tabelę w `CLAUDE.md` i kod.
-- Dodanie kanału do wykluczonych po fakcie wymaga usunięcia jego starych wierszy z bazy; przy starcie ma to
-  robić automatyczny krok czyszczący.
-- Usunięta zostaje zmienna `WITH_CRON`.
+- One channel-exclusion variable: `EXCLUDED_CHANNEL_IDS` (comma-separated list) replaces the existing
+  `SUMMARY_EXCLUDED_CHANNEL_IDS`. An excluded channel: nothing is archived, backfill skips it, it does not appear in
+  search or summaries; Marvin can still answer there using the in-memory (unpersisted) context. Renaming the variable
+  in `.env` / `.env.example` is done by the user; I update the table in `CLAUDE.md` and the code.
+- Excluding a channel after the fact requires deleting its old rows from the database; at startup an automatic
+  cleanup step does this.
+- The `WITH_CRON` variable is removed.
 
-## Czym są embedy
+## What embeds are
 
-Embed to "karta" doklejana przez Discord pod wiadomością: podgląd linku (tytuł, opis, obrazek ze strony)
-albo ustrukturyzowana wiadomość wysłana przez bota (tytuł, opis, pola, kolor). Boty (np. Wibot, Mugda) często
-umieszczają odpowiedź właśnie w embedzie, a wtedy zwykłe pole z treścią wiadomości bywa puste. Dlatego
-zapisujemy spłaszczony tekst (tytuł + opis) embedów obok treści. Podglądy linków wklejanych przez ludzi
-są szumem, więc dla nich zapisujemy tylko tytuł (decyzja podjęta).
+An embed is a "card" Discord attaches under a message: a link preview (title, description, image from the page) or a
+structured message sent by a bot (title, description, fields, color). Bots (e.g. Wibot, Mugda) often put their reply
+in an embed, and then the ordinary content field may be empty. That is why we store the flattened text (title +
+description) of embeds next to the content. Link previews of links pasted by humans are noise, so for them we store
+only the title (decision made).
 
-## Tylko do odczytu — warstwy gwarancji
+## Read-only — layers of assurance
 
-1. Uprawnienia roli bota w Discordzie (jedyna twarda warstwa): bez Manage Messages, Administrator, Manage Channels,
-   Manage Threads, Kick/Ban; potrzebne View Channel, Read Message History, Send Messages. Użytkownik sprawdza to
-   ręcznie w Server Settings przed pierwszym backfillem.
-2. Kod: moduł historii używa wyłącznie metod pobierających; przegląd kodu pod kątem metod usuwających/edytujących/
-   moderacyjnych; test wywalający build przy pojawieniu się takiego wywołania w `src`.
-3. Narzędzia dla modelu dostają tylko połączenie z bazą w trybie `readonly` i nie dostają klienta Discorda.
+1. The bot role's permissions in Discord (the only hard layer): no Manage Messages, Administrator, Manage Channels,
+   Manage Threads, Kick/Ban; needed are View Channel, Read Message History, Send Messages. The user checks this
+   manually in Server Settings before the first backfill.
+2. Code: the history module uses only fetching methods; code review for delete/edit/moderation methods; a test that
+   fails the build when such a call appears in `src`.
+3. The model's tools get only a `readonly` database connection and no Discord client.
 
-## Logowanie
+## Logging
 
-Prefiks `[history]` (filtrowanie `docker compose logs`).
-- info: start/koniec synchronizacji, postęp per kanał, podsumowanie (kanały OK/z błędem, liczba wstawionych, czas).
-- warn: brak uprawnień, kanał niedostępny, ponowna próba po błędzie przejściowym, nietypowa wiadomość.
-- error: id kanału, id wiadomości/kursor, kod i status `DiscordAPIError`, stack.
-- Błąd w jednym kanale nie przerywa reszty; zapis live w try/catch (awaria bazy nie blokuje odpowiedzi Marvina).
-- Ostatni błąd per kanał w tabeli stanu (do odczytu bezpośrednio z bazy).
-- Błędy przejściowe: ponowienia z narastającym odstępem; trwałe (np. 403): bez ponowień.
+Prefix `[history]` (for filtering `docker compose logs`).
+- info: sync start/end, per-channel progress, summary (channels OK/with error, number inserted, time).
+- warn: missing permissions, channel unavailable, retry after a transient error, unusual message.
+- error: channel id, message id/cursor, code and status of `DiscordAPIError`, stack.
+- An error in one channel does not stop the rest; the live write is in try/catch (a database failure does not block Marvin's reply).
+- The last error per channel in the state table (readable straight from the database).
+- Transient errors: retries with growing delay; permanent ones (e.g. 403): no retries.
 
-## Ryzyka i pułapki
+## Risks and pitfalls
 
-- Zależność kontekstu od bazy: awaria bazy nie może ogłupić bota — stąd awaryjne FIFO w pamięci i głośne błędy.
-- Pierwsze uruchomienie: kontekst zależy od tego, jak daleko doszedł backfill; łagodzi to dogrywanie kanału na żądanie.
-- Race zapis/odczyt: wiadomość przychodząca musi być zapisana, zanim zbudujemy kontekst; odpowiedź Marvina
-  trafia do bazy przez zdarzenie, więc przy bardzo szybkiej wymianie z innym botem może być widoczna z ms opóźnieniem.
-- Prompt injection: wiadomości na czacie to niezaufany tekst; tylko narzędzia read-only.
-- Wyciek między kanałami: bot widzi więcej niż pytający (kanały prywatne/dev, np. AlphaPump) — stąd wykluczenia
-  już przy zapisie (treści w ogóle nie ma w bazie).
-- Prywatność: trwałe archiwum wiadomości znajomych; ekipa powinna o nim wiedzieć.
-- Koszt/opóźnienie: tool calling to kilka wywołań modelu zamiast jednego; przycinać wyniki.
-- Strefy czasowe: kontener działa w UTC, czas Warszawy ≠ czas procesu; w bazie UTC, konwersja na wejściu/wyjściu.
-- Synchroniczny zapis SQLite może blokować pętlę zdarzeń przy dużych transakcjach — małe paczki.
-- Pętla tool-calling wymaga zmian w `openai.ts` (dziś tylko `contextInteract`).
+- Context depends on the database: a database failure must not make the bot dumb — hence the in-memory emergency FIFO and loud errors.
+- First run: the context depends on how far the backfill has got; on-demand channel catch-up softens this.
+- Write/read race: the incoming message must be written before we build the context; Marvin's reply reaches the
+  database through the event, so in a very fast exchange with another bot it may be visible with a few ms of delay.
+- Prompt injection: chat messages are untrusted text; read-only tools only.
+- Leakage between channels: the bot sees more than the asker (private/dev channels, e.g. AlphaPump) — hence
+  exclusions already at write time (the content is not in the database at all).
+- Privacy: a permanent archive of friends' messages; the crew should know about it.
+- Cost/latency: tool calling means several model calls instead of one; trim results.
+- Time zones: the container ran in UTC, Warsaw time ≠ process time; UTC in the database, conversion on input/output.
+- Synchronous SQLite writes can block the event loop on large transactions — small batches.
+- The tool-calling loop needs changes in `openai.ts` (today only `contextInteract`).
 
-## Punkty kontrolne (zatrzymuję się i czekam)
+## Checkpoints (stop and wait)
 
-1. Przed pierwszym backfillem: użytkownik sprawdza uprawnienia roli bota w Discordzie.
-2. Pierwszy backfill na stagingu (`make staging-up`, osobna baza), nie na produkcji.
-3. Po każdym etapie pytam o commit (reguły z `CLAUDE.md`); produkcyjnego bota restartuję po każdej zmianie.
+1. Before the first backfill: the user checks the bot role's permissions in Discord.
+2. The first backfill on staging (`make staging-up`, separate database), not on production.
+3. After each stage I ask about a commit (rules from `CLAUDE.md`); the production bot is restarted after each change.
+   (Superseded on this branch: only staging is restarted, production is not rebuilt.)
 
-## Decyzje podjęte
+## Decisions made
 
-- Czas w wynikach narzędzi: warszawski, z wyraźnym oznaczeniem.
-- Embedy: zapisujemy tekst (tytuł + opis) embedów od botów; dla podglądów linków wklejanych przez ludzi tylko tytuł.
-- Martwy kod porannego cytatu usuwamy w Etapie 0.
-- Kanały wykluczone: kontekst Marvina tylko w pamięci (FIFO, niezapisywane na dysk), bez wierszy w bazie.
-- Pozostałe rekomendacje z tego planu przyjęte.
+- Time in tool results: Warsaw, clearly marked.
+- Embeds: store the text (title + description) of embeds from bots; for link previews pasted by humans only the title.
+- Dead morning-quote code is removed in Stage 0.
+- Excluded channels: Marvin's context only in memory (FIFO, not written to disk), no rows in the database.
+- The remaining recommendations from this plan are accepted.
 
-## Decyzje otwarte
+## Open decisions
 
-- `better-sqlite3` vs `node:sqlite` (rozstrzygnąć eksperymentem na alpine).
+- `better-sqlite3` vs `node:sqlite` (settled: `better-sqlite3`, see `package.json`).
