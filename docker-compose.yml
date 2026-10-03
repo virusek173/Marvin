@@ -9,5 +9,17 @@ services:
     volumes:
       - marvin_data:/usr/src/app/data
 
+  marvin-staging:
+    profiles: ["staging"]
+    env_file:
+      - ./.env.staging
+    build:
+      context: ./
+      dockerfile: ./Dockerfile
+    restart: unless-stopped
+    volumes:
+      - marvin_staging_data:/usr/src/app/data
+
 volumes:
   marvin_data:
+  marvin_staging_data:

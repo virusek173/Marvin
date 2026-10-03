@@ -18,8 +18,10 @@ function stripHtml(html: string): string {
         .trim();
 }
 
+const DISCORD_MESSAGE_LINK = /^https?:\/\/(?:(?:ptb|canary)\.)?discord(?:app)?\.com\/channels\//i;
+
 export function extractUrls(text: string): string[] {
-    return text.match(URL_REGEX) ?? [];
+    return (text.match(URL_REGEX) ?? []).filter(url => !DISCORD_MESSAGE_LINK.test(url));
 }
 
 export async function scrapeUrl(url: string): Promise<string | null> {
