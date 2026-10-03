@@ -49,6 +49,32 @@ const toResponsesInput = (m: Message) => ({
 // the model sometimes prints its tool call as plain text ("assistant to=functions.x ...") instead of calling it
 const LEAKED_TOOL_CALL = /\bto=functions\.|<\|(?:call|channel|start|end|message)\|>/;
 
+interface TokenUsage {
+    input: number;
+    cached: number;
+    output: number;
+    reasoning: number;
+}
+
+const NO_USAGE: TokenUsage = { input: 0, cached: 0, output: 0, reasoning: 0 };
+
+/** Normalizes both API shapes: Responses (`input_tokens`) and chat completions (`prompt_tokens`). */
+const readUsage = (usage: any): TokenUsage => ({
+    input: usage?.input_tokens ?? usage?.prompt_tokens ?? 0,
+    cached: usage?.input_tokens_details?.cached_tokens ?? usage?.prompt_tokens_details?.cached_tokens ?? 0,
+    output: usage?.output_tokens ?? usage?.completion_tokens ?? 0,
+    reasoning: usage?.output_tokens_details?.reasoning_tokens ?? usage?.completion_tokens_details?.reasoning_tokens ?? 0,
+});
+
+const addUsage = (a: TokenUsage, b: TokenUsage): TokenUsage => ({
+    input: a.input + b.input,
+    cached: a.cached + b.cached,
+    output: a.output + b.output,
+    reasoning: a.reasoning + b.reasoning,
+});
+
+const formatUsage = (u: TokenUsage): string => `wejście ${u.input} (z cache ${u.cached}), wyjście ${u.output} (w tym rozumowanie ${u.reasoning})`;
+
 export class OpenAi {
     private openai: OpenAI;
 
@@ -94,6 +120,7 @@ export class OpenAi {
                 max_completion_tokens: 2500,
                 ...(chainOfToughts ? { response_format: zodResponseFormat(Response, "response") } : null),
             });
+            console.log(`[usage] ${model}: ${formatUsage(readUsage(completion.usage))}`);
 
             return completion.choices[0].message;
         } catch (error: any) {
@@ -121,6 +148,11 @@ export class OpenAi {
         const input: any[] = context.map(toResponsesInput);
         let malformed = 0;
         const spent = { chars: 0 };
+        let total = NO_USAGE;
+        let calls = 0;
+        const logTotal = () => {
+            if (calls > 1) console.log(`[usage] razem ${calls} wywołań ${model}: ${formatUsage(total)}`);
+        };
 
         try {
             for (let round = 0; round <= maxRounds; round++) {
@@ -133,19 +165,26 @@ export class OpenAi {
                     reasoning: { effort: TOOL_REASONING_EFFORT },
                     max_output_tokens: TOOL_MAX_OUTPUT_TOKENS,
                 });
-                const calls = lastRound ? [] : response.output.filter((item: any) => item.type === "function_call") as any[];
+                const used = readUsage(response.usage);
+                total = addUsage(total, used);
+                calls++;
+                console.log(`[usage] ${model} runda ${round + 1}: ${formatUsage(used)}`);
+                const toolCalls = lastRound ? [] : response.output.filter((item: any) => item.type === "function_call") as any[];
                 const text = response.output_text ?? "";
-                if (calls.length === 0 && (!text.trim() || LEAKED_TOOL_CALL.test(text))) {
+                if (toolCalls.length === 0 && (!text.trim() || LEAKED_TOOL_CALL.test(text))) {
                     if (++malformed > MAX_MALFORMED_RETRIES) throw new Error("Model zwrócił pustą lub uszkodzoną odpowiedź zamiast tekstu");
                     console.warn(`[openai] pusta lub uszkodzona odpowiedź (${text.trim() ? "wyciek wywołania narzędzia" : "brak treści"}), ponawiam (${malformed}/${MAX_MALFORMED_RETRIES})`);
                     round--;
                     continue;
                 }
-                if (calls.length === 0) return { role: "assistant", content: text };
+                if (toolCalls.length === 0) {
+                    logTotal();
+                    return { role: "assistant", content: text };
+                }
 
                 input.push(...response.output);
                 onRound?.();
-                for (const call of calls) {
+                for (const call of toolCalls) {
                     input.push({
                         type: "function_call_output",
                         call_id: call.call_id,

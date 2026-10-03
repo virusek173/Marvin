@@ -56,6 +56,22 @@ describe("OpenAi.contextInteractWithTools", () => {
         expect(JSON.parse(output.output)).toMatchObject({ count: 1 });
     });
 
+    it("logs token usage per round and the total over all rounds", async () => {
+        const usage = (input: number, cached: number, output: number, reasoning: number) => ({
+            usage: { input_tokens: input, input_tokens_details: { cached_tokens: cached }, output_tokens: output, output_tokens_details: { reasoning_tokens: reasoning } },
+        });
+        create
+            .mockResolvedValueOnce({ ...toolRequest(call("c1", "search", {})), ...usage(1000, 200, 50, 30) })
+            .mockResolvedValueOnce({ ...answer("ok"), ...usage(1500, 900, 120, 80) });
+        const log = console.log as jest.Mock;
+        await ai().contextInteractWithTools([{ role: "user", content: "hej" }], [search]);
+        const lines = log.mock.calls.map(c => String(c[0])).filter(l => l.startsWith("[usage]"));
+        expect(lines).toHaveLength(3);
+        expect(lines[0]).toContain("runda 1: wejście 1000 (z cache 200), wyjście 50 (w tym rozumowanie 30)");
+        expect(lines[2]).toContain("razem 2 wywołań");
+        expect(lines[2]).toContain("wejście 2500 (z cache 1100), wyjście 170 (w tym rozumowanie 110)");
+    });
+
     it("reports unknown tools, bad arguments and tool exceptions to the model instead of throwing", async () => {
         const broken: ToolSpec = { ...search, name: "broken", run: () => { throw new Error("boom"); } };
         create
