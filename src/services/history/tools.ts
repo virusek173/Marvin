@@ -74,6 +74,26 @@ export const buildHistoryTools = (query: HistoryQuery): ToolSpec[] => [
         },
     },
     {
+        name: "get_conversation",
+        description:
+            "Zwraca całą rozmowę, do której należy wybrana wiadomość: sąsiednie wiadomości z tego samego kanału bez przerwy dłuższej niż gap_minutes (domyślnie 30 min), od najstarszej. " +
+            "Użyj po search_messages, gdy trafienie to tylko fragment i trzeba zrozumieć, o co w rozmowie chodziło, kto co ustalił i jak się skończyła. " +
+            "Pole 'conversation' mówi, ile wiadomości ma cała rozmowa i kiedy trwała; gdy jest dłuższa niż limit, dostajesz okno wokół wybranej wiadomości.",
+        parameters: {
+            type: "object",
+            properties: {
+                message_id: str("Id wiadomości z wyniku wyszukiwania."),
+                gap_minutes: int("Największa przerwa między wiadomościami w jednej rozmowie, w minutach (domyślnie 30, maks. 240)."),
+                limit: int("Maks. liczba zwracanych wiadomości (domyślnie 40, maks. 100)."),
+            },
+            required: ["message_id"],
+        },
+        run: raw => {
+            const a = asArgs(raw);
+            return query.conversation({ messageId: asString(a.message_id) ?? "", gapMinutes: asInt(a.gap_minutes), limit: asInt(a.limit) });
+        },
+    },
+    {
         name: "get_stats",
         description:
             "Liczy wiadomości w archiwum i grupuje je, np. 'kto ile napisał', 'który dzień był najgłośniejszy', 'ile wiadomości w sierpniu', 'ile razy padło słowo X'. " +

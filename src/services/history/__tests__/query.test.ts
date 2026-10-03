@@ -239,6 +239,93 @@ describe("HistoryQuery", () => {
         });
     });
 
+    describe("scoped (hides the question being answered and newer messages)", () => {
+        it("excludes the cutoff message and everything after it from every query", () => {
+            const old1 = row({ content: "rower stary" });
+            const old2 = row({ content: "rower drugi" });
+            const question = row({ content: "ile mamy rower" });
+            const after = row({ content: "rower po pytaniu" });
+            [old1, old2, question, after].forEach(r => db.insertLive(r));
+            const s = q.scoped(question.id);
+
+            expect(s.search({ query: "rower" }).messages.map(m => m.text).sort()).toEqual(["rower drugi", "rower stary"]);
+            expect(s.range({ newest: true, limit: 10 }).messages.map(m => m.text)).toEqual(["rower stary", "rower drugi"]);
+            expect(s.stats({ query: "rower" }).total).toBe(2);
+            expect(s.stats({}).total).toBe(2);
+            expect(s.around({ messageId: old2.id, after: 5 }).messages.map(m => m.text)).toEqual(["rower stary", "rower drugi"]);
+            expect(s.conversation({ messageId: old2.id }).messages.map(m => m.text)).toEqual(["rower stary", "rower drugi"]);
+            expect(s.around({ messageId: question.id }).count).toBe(0);
+            expect(s.conversation({ messageId: after.id }).count).toBe(0);
+        });
+
+        it("leaves the unscoped query untouched and ignores a non-numeric id", () => {
+            const r = row({ content: "rower" });
+            db.insertLive(r);
+            q.scoped(r.id);
+            expect(q.search({ query: "rower" }).count).toBe(1);
+            expect(q.scoped("abc")).toBe(q);
+        });
+
+        it("combines with excluded channels", () => {
+            const a = row({ content: "rower a" });
+            const hidden = row({ content: "rower b", channelId: "secret" });
+            const question = row({ content: "pytanie" });
+            [a, hidden, question].forEach(r => db.insertLive(r));
+            open(["secret"]);
+            expect(q.scoped(question.id).search({ query: "rower" }).messages.map(m => m.text)).toEqual(["rower a"]);
+        });
+    });
+
+    describe("conversation", () => {
+        const at = (minutes: number, over: Partial<ArchiveRow> = {}) => {
+            const r = row({ createdAt: BASE + minutes * 60_000, content: `m${minutes}`, ...over });
+            db.insertLive(r);
+            return r;
+        };
+
+        it("returns the whole conversation around a message, split by gaps longer than the limit", () => {
+            at(0); at(10); at(25);
+            const anchor = at(40);
+            at(60);
+            at(200); at(210);
+            const res = q.conversation({ messageId: anchor.id });
+            expect(res.messages.map(m => m.text)).toEqual(["m0", "m10", "m25", "m40", "m60"]);
+            expect(res.conversation).toMatchObject({ messages: 5, gapMinutes: 30, start: "2025.03.10 12:00", end: "2025.03.10 13:00" });
+            expect(res.truncated).toBe(false);
+            expect(q.conversation({ messageId: anchor.id, gapMinutes: 10 }).messages.map(m => m.text)).toEqual(["m40"]);
+            expect(q.conversation({ messageId: anchor.id, gapMinutes: 15 }).messages.map(m => m.text)).toEqual(["m0", "m10", "m25", "m40"]);
+            expect(q.conversation({ messageId: anchor.id, gapMinutes: 500 }).count).toBe(7);
+        });
+
+        it("stays in the channel and ignores technical messages", () => {
+            at(0);
+            const anchor = at(5);
+            at(6, { channelId: "c2" });
+            at(7, { isTechnical: true });
+            at(8);
+            expect(q.conversation({ messageId: anchor.id }).messages.map(m => m.text)).toEqual(["m0", "m5", "m8"]);
+        });
+
+        it("returns a window centred on the message when the conversation exceeds the limit", () => {
+            const rows = Array.from({ length: 21 }, (_, i) => at(i));
+            const res = q.conversation({ messageId: rows[10].id, limit: 5 });
+            expect(res.messages.map(m => m.text)).toEqual(["m8", "m9", "m10", "m11", "m12"]);
+            expect(res.truncated).toBe(true);
+            expect(res.conversation?.messages).toBe(21);
+            const edge = q.conversation({ messageId: rows[1].id, limit: 5 });
+            expect(edge.messages.map(m => m.text)).toEqual(["m0", "m1", "m2", "m3", "m4"]);
+        });
+
+        it("handles a single message, an unknown id and excluded channels", () => {
+            const lone = at(0);
+            expect(q.conversation({ messageId: lone.id })).toMatchObject({ count: 1, conversation: { messages: 1 } });
+            expect(q.conversation({ messageId: "nope" }).note).toBeDefined();
+            const hidden = at(1, { channelId: "secret" });
+            open(["secret"]);
+            expect(q.conversation({ messageId: hidden.id }).count).toBe(0);
+        });
+    });
+
     describe("stats", () => {
         const keys = (res: { groups: { key: string; count: number }[] }) => res.groups.map(g => `${g.key}=${g.count}`);
 

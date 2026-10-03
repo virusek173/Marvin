@@ -15,7 +15,21 @@ export const LIMITS = {
     queryTokens: 8,
     statsDefault: 20,
     statsMax: 60,
+    conversationDefault: 40,
+    conversationGapDefault: 30,
+    conversationGapMax: 240,
+    conversationScan: 300,
 };
+
+export interface ConversationInfo {
+    start: string;
+    end: string;
+    /** Size of the whole conversation, of which `messages` in the result may be only a window around the requested one. */
+    messages: number;
+    gapMinutes: number;
+    /** True when the scan limit was hit, so the conversation is at least this long. */
+    atLeast?: boolean;
+}
 
 export interface HistoryMessage {
     id: string;
@@ -141,6 +155,8 @@ export class HistoryQuery {
     private excluded: string[];
     private selfId?: string;
     private guildId?: () => string | undefined;
+    /** Messages with an id at or above this are hidden (the question being answered and anything newer). */
+    private cutoffId?: bigint;
 
     constructor(file: string, options: HistoryQueryOptions) {
         this.guildId = options.guildId;
@@ -153,6 +169,15 @@ export class HistoryQuery {
 
     close(): void {
         this.db.close();
+    }
+
+    /**
+     * A view over the same connection that hides the given message and everything newer (Discord ids grow with time).
+     * The model already sees the question in its context; archived copies would only pollute search hits, links and counts.
+     */
+    scoped(beforeMessageId: string): HistoryQuery {
+        if (!/^\d+$/.test(beforeMessageId)) return this;
+        return Object.create(this, { cutoffId: { value: BigInt(beforeMessageId) } }) as HistoryQuery;
     }
 
     /** Words must all match; if nothing matches, falls back to any of the words. Bot messages are skipped unless an author is given or `includeBots` is set. */
@@ -210,16 +235,71 @@ export class HistoryQuery {
         const order = "ORDER BY m.created_at, CAST(m.id AS INTEGER)";
         const key = "(m.created_at < @t OR (m.created_at = @t AND CAST(m.id AS INTEGER) < @n))";
         const keyAfter = "(m.created_at > @t OR (m.created_at = @t AND CAST(m.id AS INTEGER) > @n))";
-        const bind = { t: anchor.created_at, n: BigInt(anchor.id), c: anchor.channel_id };
+        const bind: Record<string, unknown> = { t: anchor.created_at, n: BigInt(anchor.id), c: anchor.channel_id };
+        const cut = this.cutoffSql(bind);
         const prior = this.db
-            .prepare(`SELECT * FROM (SELECT m.* FROM messages m WHERE m.channel_id = @c AND m.is_technical = 0 AND ${key}
+            .prepare(`SELECT * FROM (SELECT m.* FROM messages m WHERE m.channel_id = @c AND m.is_technical = 0 AND ${key} ${cut}
                 ORDER BY m.created_at DESC, CAST(m.id AS INTEGER) DESC LIMIT ${before}) m ${order}`)
             .all(bind);
         const next = this.db
-            .prepare(`SELECT m.* FROM messages m WHERE m.channel_id = @c AND m.is_technical = 0 AND ${keyAfter}
+            .prepare(`SELECT m.* FROM messages m WHERE m.channel_id = @c AND m.is_technical = 0 AND ${keyAfter} ${cut}
                 ${order} LIMIT ${after}`)
             .all(bind);
         return this.render([...prior, anchor, ...next] as any[], before + after + 1);
+    }
+
+    /**
+     * The conversation a message belongs to: neighbouring messages of the same channel with no gap longer than `gapMinutes`.
+     * When the conversation exceeds `limit`, a window centred on the message is returned; `conversation` always describes the whole thing.
+     */
+    conversation(args: { messageId: string; gapMinutes?: number; limit?: number }): QueryResult & { conversation?: ConversationInfo } {
+        const gapMs = clamp(args.gapMinutes, LIMITS.conversationGapDefault, LIMITS.conversationGapMax) * 60_000;
+        const limit = clamp(args.limit, LIMITS.conversationDefault, LIMITS.rangeMax);
+        const hidden = this.excludedClause("m");
+        const anchor = this.db.prepare(`SELECT m.* FROM messages m WHERE m.id = ? ${hidden.sql}`).get(String(args.messageId), ...hidden.params) as any;
+        if (!anchor) return this.empty("Nie znaleziono wiadomości o takim identyfikatorze.");
+
+        const bind: Record<string, unknown> = { t: anchor.created_at, n: BigInt(anchor.id), c: anchor.channel_id, cap: LIMITS.conversationScan };
+        const cut = this.cutoffSql(bind);
+        const side = (before: boolean): any[] => {
+            const cmp = before ? "<" : ">";
+            const dir = before ? "DESC" : "ASC";
+            const rows = this.db
+                .prepare(`SELECT m.* FROM messages m WHERE m.channel_id = @c AND m.is_technical = 0
+                    AND (m.created_at ${cmp} @t OR (m.created_at = @t AND CAST(m.id AS INTEGER) ${cmp} @n)) ${cut}
+                    ORDER BY m.created_at ${dir}, CAST(m.id AS INTEGER) ${dir} LIMIT @cap`)
+                .all(bind) as any[];
+            const kept: any[] = [];
+            let prev = anchor.created_at;
+            for (const r of rows) {
+                if (Math.abs(r.created_at - prev) > gapMs) break;
+                kept.push(r);
+                prev = r.created_at;
+            }
+            return kept;
+        };
+        const prior = side(true);
+        const next = side(false);
+
+        const total = prior.length + 1 + next.length;
+        let before = prior.length;
+        let after = next.length;
+        if (total > limit) {
+            const others = limit - 1;
+            before = Math.min(prior.length, Math.floor(others / 2));
+            after = Math.min(next.length, others - before);
+            before = Math.min(prior.length, others - after);
+        }
+        const first = prior.length ? prior[prior.length - 1] : anchor;
+        const last = next.length ? next[next.length - 1] : anchor;
+        const shown = [...prior.slice(0, before).reverse(), anchor, ...next.slice(0, after)];
+        const result = this.render(shown, shown.length);
+        const scanCut = prior.length >= LIMITS.conversationScan || next.length >= LIMITS.conversationScan;
+        return {
+            ...result,
+            truncated: result.truncated || total > limit,
+            conversation: { start: formatWarsaw(first.created_at), end: formatWarsaw(last.created_at), messages: total, gapMinutes: gapMs / 60_000, ...(scanCut ? { atLeast: true } : null) },
+        };
     }
 
     /**
@@ -233,7 +313,7 @@ export class HistoryQuery {
         if (typeof filter === "string") return { timezone: WARSAW_TZ, total: 0, groupBy, groups: [], truncated: false, note: filter };
 
         let from = "messages m";
-        const params: (string | number)[] = [];
+        const params: (string | number | bigint)[] = [];
         let match = "";
         if (args.query?.trim()) {
             const fts = buildFtsQuery(args.query);
@@ -300,19 +380,32 @@ export class HistoryQuery {
     }
 
     /** SQL fragment hiding excluded channels and threads of excluded channels. */
-    private excludedClause(alias: string, idColumn = "channel_id"): { sql: string; params: string[] } {
-        if (this.excluded.length === 0) return { sql: "", params: [] };
-        const marks = this.excluded.map(() => "?").join(",");
-        return {
-            sql: `AND ${alias}.${idColumn} NOT IN (${marks}) AND (${alias}.parent_id IS NULL OR ${alias}.parent_id NOT IN (${marks}))`,
-            params: [...this.excluded, ...this.excluded],
-        };
+    private excludedClause(alias: string, idColumn = "channel_id"): { sql: string; params: (string | bigint)[] } {
+        const sql: string[] = [];
+        const params: (string | bigint)[] = [];
+        if (this.excluded.length > 0) {
+            const marks = this.excluded.map(() => "?").join(",");
+            sql.push(`AND ${alias}.${idColumn} NOT IN (${marks}) AND (${alias}.parent_id IS NULL OR ${alias}.parent_id NOT IN (${marks}))`);
+            params.push(...this.excluded, ...this.excluded);
+        }
+        if (this.cutoffId !== undefined && idColumn === "channel_id") {
+            sql.push(`AND CAST(${alias}.id AS INTEGER) < ?`);
+            params.push(this.cutoffId);
+        }
+        return { sql: sql.join(" "), params };
+    }
+
+    /** Extra condition (named parameter `@cut`) for queries that walk from an anchor message instead of using `excludedClause`. */
+    private cutoffSql(bind: Record<string, unknown>, alias = "m"): string {
+        if (this.cutoffId === undefined) return "";
+        bind.cut = this.cutoffId;
+        return `AND CAST(${alias}.id AS INTEGER) < @cut`;
     }
 
     /** WHERE fragment for author / channel / date filters; a string result is a message to show the model instead. */
-    private filters(f: QueryFilters, alias: string): { sql: string; params: (string | number)[] } | string {
+    private filters(f: QueryFilters, alias: string): { sql: string; params: (string | number | bigint)[] } | string {
         const parts: string[] = [`${alias}.is_technical = 0`];
-        const params: (string | number)[] = [];
+        const params: (string | number | bigint)[] = [];
 
         if (f.author?.trim()) {
             const names = authorNamesFor(f.author);

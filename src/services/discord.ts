@@ -394,10 +394,10 @@ export class DiscordServce {
                     userRequest,
                 ]);
             } else {
-                if (this.historyTools.length > 0) {
+                if (this.historyQuery && this.historyTools.length > 0) {
                     assResponse = await MODEL.contextInteractWithTools(
                         [this.getSystemContext(true), ...context, ...scrapedContext],
-                        this.historyTools,
+                        buildHistoryTools(this.historyQuery.scoped(message.id)),
                         { onRound: () => message.channel.sendTyping() }
                     );
                 } else {
