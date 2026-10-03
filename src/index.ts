@@ -15,7 +15,9 @@ const croneMap = {
 const croneOptions = {
   timezone: "Europe/Warsaw",
 };
-const SERVER_SUMMARY_INTERVAL_DAYS = 2;
+const DEFAULT_SERVER_SUMMARY_INTERVAL_DAYS = 3;
+const configuredInterval = Number(process.env.SERVER_SUMMARY_INTERVAL_DAYS);
+const SERVER_SUMMARY_INTERVAL_DAYS = configuredInterval > 0 ? configuredInterval : DEFAULT_SERVER_SUMMARY_INTERVAL_DAYS;
 
 let client: any = null;
 

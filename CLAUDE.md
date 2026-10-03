@@ -29,6 +29,7 @@ npm test              # Jest tests
 | `CHANNEL_ID` | Channel ID where the bot posts its wake-up message after a restart |
 | `BOTS_CHANNEL_ID` | Channel ID (bots conversation channel) where the periodic server summary is posted |
 | `EXCLUDED_CHANNEL_IDS` | Comma-separated channel IDs that are never archived, synced, searched or summarized (e.g. dev/issue-tracker channels). Threads of an excluded channel are excluded too. Legacy name `SUMMARY_EXCLUDED_CHANNEL_IDS` is still read and merged |
+| `SERVER_SUMMARY_INTERVAL_DAYS` | Days between periodic server summaries (checked daily at 20:00 Warsaw). Default 3; a missing, non-numeric or non-positive value falls back to the default |
 | `HISTORY_SYNC_ENABLED` | `true` starts the history backfill (whole server, read-only) at startup and an hourly catch-up. Off by default |
 | `MARVIN_ID` | Bot's Discord user ID — used to detect mentions |
 | `MARVIN_USERNAME` | Bot's username — used to ignore its own messages |
