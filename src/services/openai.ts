@@ -48,7 +48,7 @@ const toResponsesInput = (m: Message) => ({
 });
 // the model sometimes prints its tool call as plain text ("assistant to=functions.x ...") instead of calling it,
 // or emits tool-channel garbage ("[tool]\nYou have N weighted tokens left") as the answer
-const LEAKED_TOOL_CALL = /\bto=functions\.|<\|(?:call|channel|start|end|message)\|>|^\s*\[tool\]|weighted tokens left|[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\u10a0-\u10ff]|\bWe need (?:to )?respond/i;
+const LEAKED_TOOL_CALL = /\bto=functions\.|<\|(?:call|channel|start|end|message)\|>|^\s*\[tool\]|weighted tokens left|[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\u10a0-\u10ff]|\bWe need (?:to )?respond|^\s*\[assistant\b/i;
 
 interface TokenUsage {
     input: number;

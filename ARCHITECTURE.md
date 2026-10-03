@@ -106,7 +106,7 @@ Discord: user sends message
                             MODEL.contextInteractWithTools([system + history rules, ...context], historyTools)
                                 ↓ model may call search_messages / get_messages / get_message_context / get_conversation / get_stats / get_profile / list_channels
                                 ↓ (OpenAI Responses API, reasoning "low"; max 5 rounds, then a forced answer without tools;
-                                ↓  empty / leaked-tool-call replies are retried twice, then an error is raised)
+                                ↓  empty / leaked-tool-call replies are retried up to 4 times, from the 3rd attempt without tools, then an error is raised)
                     │
                     └── (both paths)
                             splitForDiscord(response) → reply + follow-up messages (≤1950 chars each)
@@ -145,7 +145,7 @@ interface Message {
 }
 
 // Context line shown to the model (built at read time from the DB row):
-//   "[YYYY.MM.DD HH:MM] Jacek: text"   (Warsaw time; Marvin's own messages get role "assistant")
+//   "Jacek (YYYY.MM.DD HH:MM): text"   (Warsaw time; Marvin's own messages get role "assistant")
 ```
 
 ## AI Services Comparison

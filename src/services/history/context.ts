@@ -11,10 +11,10 @@ export const CONTEXT_LIMIT = 30;
 export const renderBody = (m: Pick<StoredMessage, "content" | "embedsText" | "attachmentsText">): string =>
     [m.content, m.embedsText, m.attachmentsText].filter(Boolean).join(" ");
 
-/** "[YYYY.MM.DD HH:MM] Name: text" — the line format the model has always seen in its context. */
+/** "Name (YYYY.MM.DD HH:MM): text" — a leading "[" made the model return empty or garbage replies (15% vs <1% in an A/B test). */
 export const renderLine = (m: StoredMessage, selfId?: string): string => {
     const name = m.authorId === selfId ? "Marvin" : mapGlobalNameNameToRealName[m.authorName];
-    return `[${formatWarsaw(m.createdAt)}] ${name}: ${renderBody(m)}`;
+    return `${name} (${formatWarsaw(m.createdAt)}): ${renderBody(m)}`;
 };
 
 export const toContextMessage = (m: StoredMessage, selfId?: string): Message => ({

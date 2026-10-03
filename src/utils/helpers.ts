@@ -49,13 +49,13 @@ export const stripImages = (context: Message[]): Message[] =>
   });
 
 /**
- * Strips a leading "[YYYY.MM.DD HH:MM] Name: " prefix from a model response.
+ * Strips a leading "Name (YYYY.MM.DD HH:MM): " (or the older "[YYYY.MM.DD HH:MM] Name: ") prefix from a model response.
  * Context messages are stored with this prefix so the model has time/sender
  * awareness, but the model sometimes imitates the pattern and echoes it back
  * at the start of its own reply — this removes it before the text reaches Discord.
  */
 export const stripLeadingTimestampPrefix = (content: string): string =>
-  content.replace(/^\s*\[\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}\]\s*[^\]\n:]+:\s*/, "");
+  content.replace(/^\s*(?:\[\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}\]\s*[^\]\n:]+|[^()\n:]{1,40}\(\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}\)):\s*/, "");
 
 const TRAILING_CITE = /^(\s*(?:[-*•]|\d+[.)])\s+)?(.*?)\s*(\[\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}\]\(<https?:\/\/[^>\s]+>\))\s*$/;
 const LEADING_CITE = /^\s*(?:(?:[-*•]|\d+[.)])\s+)?\[\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}\]\(</;
@@ -84,10 +84,10 @@ export const splitForDiscord = (text: string, maxLength = 1950, maxParts = 4): s
   return parts;
 };
 
-/** Parses the leading "[YYYY.MM.DD HH:MM]" prefix of a context message (process-local time); null if absent. */
+/** Parses the timestamp of a context line, "Name (YYYY.MM.DD HH:MM): ..." or the older "[YYYY.MM.DD HH:MM] Name: ..." (process-local time); null if absent. */
 export const parseContextTimestamp = (content: unknown): Date | null => {
   if (typeof content !== "string") return null;
-  const m = content.match(/^\s*\[(\d{4})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2})\]/);
+  const m = content.match(/^\s*(?:\[|[^()\n:]{1,40}\()(\d{4})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2})[\])]/);
   return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : null;
 };
 

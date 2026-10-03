@@ -1,4 +1,16 @@
-import { pushWithLimit, parseContextTimestamp, splitForDiscord, moveCitesToLineStart } from '../helpers';
+import { pushWithLimit, parseContextTimestamp, splitForDiscord, moveCitesToLineStart, stripLeadingTimestampPrefix } from '../helpers';
+
+describe('stripLeadingTimestampPrefix', () => {
+    it('removes an echoed context prefix in the new and the old format', () => {
+        expect(stripLeadingTimestampPrefix('Marvin (2026.10.03 12:17): Nic.')).toBe('Nic.');
+        expect(stripLeadingTimestampPrefix('[2026.10.03 12:17] Marvin: Nic.')).toBe('Nic.');
+    });
+
+    it('leaves ordinary replies alone', () => {
+        expect(stripLeadingTimestampPrefix('Nic. A u Ciebie (dziś): spokój')).toBe('Nic. A u Ciebie (dziś): spokój');
+        expect(stripLeadingTimestampPrefix('Zwykła odpowiedź')).toBe('Zwykła odpowiedź');
+    });
+});
 
 describe('moveCitesToLineStart', () => {
     const link = '[01.10.2026 22:02](<https://discord.com/channels/1/2/3>)';
@@ -45,6 +57,7 @@ describe('splitForDiscord', () => {
 describe('parseContextTimestamp', () => {
     it('parses the leading timestamp prefix', () => {
         expect(parseContextTimestamp('[2026.09.29 18:53] Domin: hej')).toEqual(new Date(2026, 8, 29, 18, 53));
+        expect(parseContextTimestamp('Domin (2026.09.29 18:53): hej')).toEqual(new Date(2026, 8, 29, 18, 53));
     });
 
     it('returns null when there is no prefix', () => {

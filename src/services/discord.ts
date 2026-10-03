@@ -241,7 +241,7 @@ export class DiscordServce {
     async userResponseFactory(message: any, imageDescriptions?: string[]) {
         const realName = mapGlobalNameNameToRealName[message.author.globalName];
         const timestamp = new DateService(message.createdAt).getFormattedDateTime();
-        const textContent = `[${timestamp}] ${realName}: ${message.content}`;
+        const textContent = `${realName} (${timestamp}): ${message.content}`;
 
         const descriptions = imageDescriptions ?? await this.describeImages(message);
         if (descriptions.length > 0) {
@@ -284,7 +284,7 @@ export class DiscordServce {
         if (!message.content || isTechnicalMarvinContent(message.content)) return;
         const timestamp = new DateService(message.createdAt).getFormattedDateTime();
         this.fallbackContext.pushWithLimit(
-            MODEL.messageFactory(`[${timestamp}] Marvin: ${message.content}`, 'assistant'),
+            MODEL.messageFactory(`Marvin (${timestamp}): ${message.content}`, 'assistant'),
             message.channelId
         );
     }

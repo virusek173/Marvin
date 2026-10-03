@@ -47,15 +47,15 @@ describe("HistoryContext", () => {
         ]);
     });
 
-    it("renders `[time] Name: text` with the real name and maps Marvin to the assistant role", () => {
+    it("renders `Name (time): text` with the real name and maps Marvin to the assistant role", () => {
         db.insertLive(row({ content: "hej" }));
         db.insertLive(row({ authorId: MARVIN, authorName: "Marvin", isBot: true, content: "no cześć" }));
         db.insertLive(row({ authorId: "bot2", authorName: "Mugda", isBot: true, content: "pranie" }));
         const [human, marvin, otherBot] = make().getContext("c1");
         expect(human.role).toBe("user");
-        expect(human.content).toMatch(/^\[\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}\] Jacek: hej$/);
+        expect(human.content).toMatch(/^Jacek \(\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}\): hej$/);
         expect(marvin.role).toBe("assistant");
-        expect(marvin.content).toMatch(/\] Marvin: no cześć$/);
+        expect(marvin.content).toMatch(/^Marvin \(.+\): no cześć$/);
         expect(otherBot.role).toBe("user");
     });
 

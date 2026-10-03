@@ -129,6 +129,7 @@ Informs about "niedziela handlowa" (trading/non-trading Sundays in Poland — da
 
 ## Gotchas
 
+- **Context line format is `Name (YYYY.MM.DD HH:MM): text`, never `[time] Name:`.** In an A/B test (`scripts/ab-garbage.mjs`, 120 calls per variant) a line starting with `[` made gpt-5.6-terra return an empty or garbage reply in the tool loop 15% of the time versus <1% for the current format. Do not change the format without re-running that test; `stripLeadingTimestampPrefix` and `parseContextTimestamp` understand both the new and the old format.
 - **Context limit:** the context is the last **30 messages** of the channel read from the archive (`CONTEXT_LIMIT` in `history/context.ts`), technical Marvin messages excluded. Changing this affects API cost.
 - **Message archive (`data/history.db`)** — SQLite + FTS5 in the `marvin_data` volume. Every message is written live; `HISTORY_SYNC_ENABLED=true` additionally imports the full history (per-channel cursor in `sync_state`, resumable, idempotent) and catches up hourly. Delete the file to rebuild it from scratch (the next backfill re-imports everything).
 - **Discord access must stay read-only:** history sync only calls `fetch`; `npm test` includes a guard test (`readonly.guard.test.ts`) that fails if `src` gains a Discord delete/edit/moderation call. The bot role in Discord must have only View Channel, Read Message History, Send Messages and Add Reactions (for the emoji reactions, the single allowed exception) — role permissions are the hard guarantee.
