@@ -57,7 +57,6 @@ const {
     WIKTOR_ID,
     MADZIA_ID,
     MASON_ID,
-    PODSUMOWUS_ID,
     MUGDA_ID,
     WIBOT_ID
 } = process.env;
@@ -71,7 +70,6 @@ const peopleMap = {
     "WiktorId": WIKTOR_ID || '',
     "MadziaId": MADZIA_ID || '',
     "MasonId": MASON_ID || '',
-    "PodsumowusId": PODSUMOWUS_ID || '',
     "MugdaId": MUGDA_ID || '',
     "WibotId": WIBOT_ID || '',
 }

@@ -45,7 +45,6 @@ npm test              # Jest tests
 | `WIKTOR_ID` | Discord ID of Wiktor |
 | `MADZIA_ID` | Discord ID of Madzia |
 | `MASON_ID` | Discord ID of Mason |
-| `PODSUMOWUS_ID` | Discord ID of Podsumowuś |
 | `MUGDA_ID` | Discord ID of the Mugda bot |
 | `WIBOT_ID` | Discord ID of the Wibot bot |
 
