@@ -22,6 +22,7 @@ import {
     getMarvinMotivationSystemPrompt,
     getPerplexityToMarvinResponsePrompt,
     getProfileSystemPrompt,
+    getAuthorProfilePrompt,
     getMonthlyReportSystemPrompt,
     WAKE_UP_MESSAGE_PROMPT,
     HISTORY_TOOLS_PROMPT
@@ -259,10 +260,23 @@ export class DiscordServce {
     }
 
     /** Built per request so the date in the prompt is never stale. */
-    getSystemContext(withHistoryTools: boolean = false): Message {
+    getSystemContext(withHistoryTools: boolean = false, authorProfile: string = ''): Message {
         const date = new DateService().getFormattedDate();
-        const prompt = getMarvinMotivationSystemPrompt(date, peopleMap) + (withHistoryTools ? HISTORY_TOOLS_PROMPT : '');
+        const prompt = getMarvinMotivationSystemPrompt(date, peopleMap) + (withHistoryTools ? HISTORY_TOOLS_PROMPT : '') + authorProfile;
         return MODEL.messageFactory(prompt, 'system');
+    }
+
+    /** Prompt fragment with the generated profile of the message's author, or '' when there is none (profiles off, not yet generated). */
+    private getAuthorProfile(message: any): string {
+        try {
+            if (!this.historyQuery) return '';
+            const name = mapGlobalNameNameToRealName[message.author.globalName];
+            const found = this.historyQuery.profiles(name).profiles[0];
+            return found ? getAuthorProfilePrompt(found.name, found.profile) : '';
+        } catch (error) {
+            console.warn("Nie udało się wczytać profilu autora:", error);
+            return '';
+        }
     }
 
     /** Keeps the in-memory fallback context (used only when the archive is unavailable or the channel is excluded) in step. */
@@ -443,6 +457,8 @@ export class DiscordServce {
                 ? [MODEL.messageFactory(`Zawartość stron z wiadomości użytkownika:\n${scrapedParts.join('\n\n---\n\n')}`)]
                 : [];
 
+            const authorProfile = this.getAuthorProfile(message);
+
             const deciderResponse = await decider.contextInteract([
                 MODEL.messageFactory(DECIDER_SYSTEM_PROMPT, 'system'),
                 ...context,
@@ -456,7 +472,7 @@ export class DiscordServce {
 
                 const userRequest = MODEL.messageFactory(getPerplexityToMarvinResponsePrompt(perplexityResponse.content));
                 assResponse = await MODEL.contextInteract([
-                    this.getSystemContext(),
+                    this.getSystemContext(false, authorProfile),
                     ...context,
                     ...scrapedContext,
                     userRequest,
@@ -464,13 +480,13 @@ export class DiscordServce {
             } else {
                 if (this.historyQuery && this.historyTools.length > 0) {
                     assResponse = await MODEL.contextInteractWithTools(
-                        [this.getSystemContext(true), ...context, ...scrapedContext],
+                        [this.getSystemContext(true, authorProfile), ...context, ...scrapedContext],
                         buildHistoryTools(this.historyQuery.scoped(message.id)),
                         { onRound: () => message.channel.sendTyping() }
                     );
                 } else {
                     assResponse = await MODEL.contextInteract([
-                        this.getSystemContext(),
+                        this.getSystemContext(false, authorProfile),
                         ...context,
                         ...scrapedContext,
                     ]);

@@ -70,7 +70,7 @@ context and of the periodic summary.
   For each author (real name, usernames merged; other bots included and flagged as bots, Marvin himself excluded) with ≥30 messages it asks the model for a ≤600-char description from the
   person's own messages (first run: newest 500; later: old profile + up to 400 messages with `seq > last_seq`), but only
   when the profile is ≥7 days old and ≥20 new messages exist. State lives in the `profiles` table, so restarts are safe.
-  Marvin reads them through the `get_profile` tool (`HistoryQuery.profiles`). The main system prompt does not contain profiles.
+  Marvin reads them through the `get_profile` tool (`HistoryQuery.profiles`). Besides the tool, the profile of the author of a mention is appended to the reply's system prompt (`getAuthorProfile` in `discord.ts`) so the answer fits the person; other people's profiles are not injected.
 - **Technical messages** (Marvin's "Zaglądam do ...", error messages) are flagged `is_technical` and left out of context.
 - **Read-only by construction**: the Discord side is fetch-only (a guard test in `npm test` fails if `src` gains a
   Discord delete/edit/moderation call); the model's tools use a separate `readonly` SQLite connection. The hard
