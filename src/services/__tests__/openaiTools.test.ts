@@ -109,7 +109,7 @@ describe("OpenAi.contextInteractWithTools", () => {
         create.mockReset();
         create.mockResolvedValue(leaked);
         await expect(ai().contextInteractWithTools([{ role: "user", content: "x" }], [search])).rejects.toThrow(/uszkodzoną/);
-        expect(create).toHaveBeenCalledTimes(3);
+        expect(create).toHaveBeenCalledTimes(5);
     });
 
     it("retries on tool-channel garbage like '[tool] ... weighted tokens left', but not on an ordinary mention of a tool", async () => {
@@ -121,13 +121,23 @@ describe("OpenAi.contextInteractWithTools", () => {
         create.mockReset();
         create.mockResolvedValue(answer("Mam 3 weighted tokens left"));
         await expect(ai().contextInteractWithTools([{ role: "user", content: "x" }], [search])).rejects.toThrow(/uszkodzoną/);
-        expect(create).toHaveBeenCalledTimes(3);
+        expect(create).toHaveBeenCalledTimes(5);
 
         create.mockReset();
         create.mockResolvedValueOnce(answer("Użyj [tool] w środku zdania, to nie wyciek"));
         const ok = await ai().contextInteractWithTools([{ role: "user", content: "x" }], [search]);
         expect(ok.content).toContain("w środku zdania");
         expect(create).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries on gibberish: CJK/Georgian characters or leaked English reasoning", async () => {
+        for (const bad of ["[2026.10.03  北京赛车 微信里的", "კომენტary tak", "We need respond continuation timestamp"]) {
+            create.mockReset();
+            create.mockResolvedValueOnce(answer(bad)).mockResolvedValueOnce(answer("normalna odpowiedź"));
+            const res = await ai().contextInteractWithTools([{ role: "user", content: "x" }], [search]);
+            expect(res.content).toBe("normalna odpowiedź");
+            expect(create).toHaveBeenCalledTimes(2);
+        }
     });
 
     it("treats an empty reply like a malformed one", async () => {

@@ -34,7 +34,7 @@ export interface ToolLoopOptions {
 
 const MAX_TOOL_RESULT_CHARS = 60000;
 const MAX_TOTAL_TOOL_CHARS = 30000;
-const MAX_MALFORMED_RETRIES = 2;
+const MAX_MALFORMED_RETRIES = 4;
 const TOOL_REASONING_EFFORT = "low";
 const TOOL_MAX_OUTPUT_TOKENS = 4000;
 
@@ -48,7 +48,7 @@ const toResponsesInput = (m: Message) => ({
 });
 // the model sometimes prints its tool call as plain text ("assistant to=functions.x ...") instead of calling it,
 // or emits tool-channel garbage ("[tool]\nYou have N weighted tokens left") as the answer
-const LEAKED_TOOL_CALL = /\bto=functions\.|<\|(?:call|channel|start|end|message)\|>|^\s*\[tool\]|weighted tokens left/i;
+const LEAKED_TOOL_CALL = /\bto=functions\.|<\|(?:call|channel|start|end|message)\|>|^\s*\[tool\]|weighted tokens left|[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\u10a0-\u10ff]|\bWe need (?:to )?respond/i;
 
 interface TokenUsage {
     input: number;
@@ -158,11 +158,12 @@ export class OpenAi {
         try {
             for (let round = 0; round <= maxRounds; round++) {
                 const lastRound = round === maxRounds;
+                const forceText = lastRound || malformed >= 2;
                 const response = await this.openai.responses.create({
                     model,
                     input,
                     tools: apiTools,
-                    tool_choice: lastRound ? "none" : "auto",
+                    tool_choice: forceText ? "none" : "auto",
                     reasoning: { effort: TOOL_REASONING_EFFORT },
                     max_output_tokens: TOOL_MAX_OUTPUT_TOKENS,
                 });
@@ -170,11 +171,11 @@ export class OpenAi {
                 total = addUsage(total, used);
                 calls++;
                 console.log(`[usage] ${model} runda ${round + 1}: ${formatUsage(used)}`);
-                const toolCalls = lastRound ? [] : response.output.filter((item: any) => item.type === "function_call") as any[];
+                const toolCalls = forceText ? [] : response.output.filter((item: any) => item.type === "function_call") as any[];
                 const text = response.output_text ?? "";
                 if (toolCalls.length === 0 && (!text.trim() || LEAKED_TOOL_CALL.test(text))) {
                     if (++malformed > MAX_MALFORMED_RETRIES) throw new Error("Model zwrócił pustą lub uszkodzoną odpowiedź zamiast tekstu");
-                    console.warn(`[openai] pusta lub uszkodzona odpowiedź (${text.trim() ? "wyciek wywołania narzędzia" : "brak treści"}), ponawiam (${malformed}/${MAX_MALFORMED_RETRIES})`);
+                    console.warn(`[openai] pusta lub uszkodzona odpowiedź (${text.trim() ? "wyciek wywołania narzędzia" : "brak treści"}), ponawiam (${malformed}/${MAX_MALFORMED_RETRIES})`, JSON.stringify({ status: (response as any).status, incomplete: (response as any).incomplete_details, output: response.output.map((item: any) => ({ type: item.type, status: item.status, refusal: item.content?.find?.((c: any) => c.type === "refusal")?.refusal })) }));
                     round--;
                     continue;
                 }
