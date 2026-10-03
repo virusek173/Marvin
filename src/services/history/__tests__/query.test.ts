@@ -239,6 +239,79 @@ describe("HistoryQuery", () => {
         });
     });
 
+    describe("stats", () => {
+        const keys = (res: { groups: { key: string; count: number }[] }) => res.groups.map(g => `${g.key}=${g.count}`);
+
+        it("counts per author, merging usernames of one person and skipping bots by default", () => {
+            for (let i = 0; i < 3; i++) db.insertLive(row({ authorId: "u1", authorName: "Vajrusek" }));
+            for (let i = 0; i < 2; i++) db.insertLive(row({ authorId: "u2", authorName: "Madzia" }));
+            db.insertLive(row({ authorId: MARVIN, authorName: "Marvin", isBot: true }));
+            db.insertLive(row({ authorId: "u1", authorName: "Vajrusek", isTechnical: true }));
+
+            const res = q.stats({ groupBy: "author" });
+            expect(res.total).toBe(5);
+            expect(keys(res)).toEqual(["Jacek=3", "Madzia=2"]);
+            expect(res.groups[0].share).toBe(60);
+
+            const withBots = q.stats({ groupBy: "author", includeBots: true });
+            expect(withBots.total).toBe(6);
+            expect(keys(withBots)).toContain("Marvin=1");
+            expect(keys(q.stats({ groupBy: "author", author: "Marvin" }))).toEqual(["Marvin=1"]);
+        });
+
+        it("groups per channel, naming threads after their parent", () => {
+            db.insertLive(row({ channelId: "c1" }));
+            db.insertLive(row({ channelId: "c1" }));
+            db.insertLive(row({ channelId: "t1", parentId: "secret" }));
+            expect(keys(q.stats({ groupBy: "channel" }))).toEqual(["ogolny=2", "wątek (wątek w #tajny)=1"]);
+        });
+
+        it("buckets by Warsaw-time day, month, weekday and hour", () => {
+            const at = (utc: number) => db.insertLive(row({ createdAt: utc }));
+            at(Date.UTC(2025, 2, 10, 22, 30)); // Mon 23:30 Warsaw
+            at(Date.UTC(2025, 2, 10, 23, 30)); // Tue 00:30 Warsaw
+            at(Date.UTC(2025, 3, 5, 9, 0)); // Sat 11:00 Warsaw (CEST)
+            expect(keys(q.stats({ groupBy: "day", sort: "key" }))).toEqual(["2025-03-10=1", "2025-03-11=1", "2025-04-05=1"]);
+            expect(keys(q.stats({ groupBy: "month" }))).toEqual(["2025-03=2", "2025-04=1"]);
+            expect(keys(q.stats({ groupBy: "weekday" }))).toEqual(["poniedziałek=1", "wtorek=1", "sobota=1"]);
+            expect(keys(q.stats({ groupBy: "hour" }))).toEqual(["00:00=1", "11:00=1", "23:00=1"]);
+        });
+
+        it("applies the query, channel and date filters", () => {
+            db.insertLive(row({ content: "rower jest super", createdAt: Date.UTC(2025, 2, 10, 11, 0) }));
+            db.insertLive(row({ content: "mój rower", createdAt: Date.UTC(2025, 5, 10, 11, 0) }));
+            db.insertLive(row({ content: "coś innego", createdAt: Date.UTC(2025, 5, 11, 11, 0) }));
+            expect(q.stats({ query: "rower" }).total).toBe(2);
+            expect(keys(q.stats({ query: "rower", groupBy: "month" }))).toEqual(["2025-03=1", "2025-06=1"]);
+            expect(q.stats({ from: "2025-06-01" }).total).toBe(2);
+            expect(q.stats({ channel: "memy" }).total).toBe(0);
+            expect(q.stats({ channel: "nie ma takiego" }).note).toMatch(/Nie znam kanału/);
+        });
+
+        it("returns the total with first and last message time when not grouped", () => {
+            db.insertLive(row({ createdAt: Date.UTC(2025, 2, 10, 11, 0) }));
+            db.insertLive(row({ createdAt: Date.UTC(2025, 2, 12, 11, 0) }));
+            const res = q.stats({});
+            expect(res).toMatchObject({ total: 2, groupBy: "none", groups: [], first: "2025.03.10 12:00", last: "2025.03.12 12:00" });
+        });
+
+        it("limits the number of groups and flags the cut", () => {
+            for (let i = 0; i < 5; i++) db.insertLive(row({ authorId: `x${i}`, authorName: `user${i}` }));
+            const res = q.stats({ groupBy: "author", limit: 2 });
+            expect(res.groups).toHaveLength(2);
+            expect(res.truncated).toBe(true);
+            expect(res.total).toBe(5);
+        });
+
+        it("hides excluded channels", () => {
+            db.insertLive(row({ channelId: "c1" }));
+            db.insertLive(row({ channelId: "secret" }));
+            db.insertLive(row({ channelId: "t1", parentId: "secret" }));
+            open(["secret"]);
+            expect(q.stats({ groupBy: "channel" }).total).toBe(1);
+        });
+    });
+
     it("lists channels with names, thread parents and counts", () => {
         db.insertLive(row());
         db.insertLive(row({ channelId: "t1", parentId: "secret" }));

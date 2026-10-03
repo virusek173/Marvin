@@ -32,8 +32,15 @@ describe("buildHistoryTools", () => {
 
     const tool = (name: string) => tools.find(t => t.name === name)!;
 
-    it("exposes exactly the four read-only tools with valid JSON schemas", () => {
-        expect(tools.map(t => t.name).sort()).toEqual(["get_message_context", "get_messages", "list_channels", "search_messages"]);
+    it("get_stats maps arguments and ignores junk", async () => {
+        const res: any = await tool("get_stats").run({ group_by: "author", limit: "many", sort: 5 });
+        expect(res).toMatchObject({ total: 1, groupBy: "author", groups: [{ key: "Jacek", count: 1 }] });
+        expect(((await tool("get_stats").run({ group_by: "DROP TABLE" })) as any).groupBy).toBe("none");
+        expect(((await tool("get_stats").run(null)) as any).total).toBe(1);
+    });
+
+    it("exposes exactly the five read-only tools with valid JSON schemas", () => {
+        expect(tools.map(t => t.name).sort()).toEqual(["get_message_context", "get_messages", "get_stats", "list_channels", "search_messages"]);
         for (const t of tools) expect(t.parameters).toMatchObject({ type: "object" });
     });
 

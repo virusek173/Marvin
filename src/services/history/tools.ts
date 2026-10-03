@@ -1,5 +1,5 @@
 import type { ToolSpec } from "../openai.js";
-import { HistoryQuery } from "./query.js";
+import { HistoryQuery, STATS_GROUPS } from "./query.js";
 
 const str = (description: string) => ({ type: "string", description });
 const int = (description: string) => ({ type: "integer", description });
@@ -70,6 +70,39 @@ export const buildHistoryTools = (query: HistoryQuery): ToolSpec[] => [
                 to: asString(a.to),
                 limit: asInt(a.limit),
                 newest: a.newest === true,
+            });
+        },
+    },
+    {
+        name: "get_stats",
+        description:
+            "Liczy wiadomości w archiwum i grupuje je, np. 'kto ile napisał', 'który dzień był najgłośniejszy', 'ile wiadomości w sierpniu', 'ile razy padło słowo X'. " +
+            "Zwraca dokładne liczby z całego archiwum (nie pobieraj wiadomości, żeby je liczyć ręcznie). Liczy tylko wiadomości ludzi, chyba że include_bots=true albo podano autora. " +
+            "Bez group_by zwraca tylko łączną liczbę pasujących wiadomości oraz datę pierwszej i ostatniej.",
+        parameters: {
+            type: "object",
+            properties: {
+                group_by: { type: "string", enum: [...STATS_GROUPS], description: "Po czym grupować: author, channel, day, month, weekday (dzień tygodnia), hour (godzina doby). Pominięte = tylko suma." },
+                query: str("Policz tylko wiadomości zawierające te słowa (dopasowanie po początku słowa, wszystkie podane słowa), np. 'rower'. Opcjonalnie."),
+                ...FILTER_PROPS,
+                include_bots: { type: "boolean", description: "true = wliczaj też wiadomości botów, w tym Marvina (domyślnie pomijane)." },
+                sort: { type: "string", enum: ["count", "key"], description: "count = od największej liczby, key = chronologicznie / alfabetycznie. Domyślnie: count, a dla month/weekday/hour key." },
+                limit: int("Maks. liczba grup (domyślnie 20, maks. 60)."),
+            },
+            required: [],
+        },
+        run: raw => {
+            const a = asArgs(raw);
+            return query.stats({
+                groupBy: asString(a.group_by),
+                query: asString(a.query),
+                author: asString(a.author),
+                channel: asString(a.channel),
+                from: asString(a.from),
+                to: asString(a.to),
+                includeBots: a.include_bots === true,
+                sort: asString(a.sort),
+                limit: asInt(a.limit),
             });
         },
     },

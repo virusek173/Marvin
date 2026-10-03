@@ -13,6 +13,8 @@ export const LIMITS = {
     textChars: 500,
     totalChars: 45000,
     queryTokens: 8,
+    statsDefault: 20,
+    statsMax: 60,
 };
 
 export interface HistoryMessage {
@@ -32,6 +34,32 @@ export interface QueryResult {
     messages: HistoryMessage[];
     note?: string;
 }
+
+export const STATS_GROUPS = ["author", "channel", "day", "month", "weekday", "hour"] as const;
+export type StatsGroup = (typeof STATS_GROUPS)[number] | "none";
+
+export interface StatsResult {
+    timezone: string;
+    /** Number of messages matching the filters (before grouping). */
+    total: number;
+    groupBy: StatsGroup;
+    first?: string;
+    last?: string;
+    groups: { key: string; count: number; share: number }[];
+    /** True when there were more groups than `limit`. */
+    truncated: boolean;
+    note?: string;
+}
+
+const WEEKDAYS = ["poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota", "niedziela"];
+
+const timeBucket = (ms: number, groupBy: StatsGroup): string => {
+    const [y, mo, d, hm] = formatWarsaw(ms).split(/[. ]/);
+    if (groupBy === "month") return `${y}-${mo}`;
+    if (groupBy === "hour") return `${hm.substring(0, 2)}:00`;
+    if (groupBy === "weekday") return WEEKDAYS[(new Date(Date.UTC(+y, +mo - 1, +d)).getUTCDay() + 6) % 7];
+    return `${y}-${mo}-${d}`;
+};
 
 export interface ChannelListing {
     id: string;
@@ -192,6 +220,65 @@ export class HistoryQuery {
                 ${order} LIMIT ${after}`)
             .all(bind);
         return this.render([...prior, anchor, ...next] as any[], before + after + 1);
+    }
+
+    /**
+     * Message counts grouped by author, channel or Warsaw-time bucket. Counts only human messages unless `includeBots`
+     * is set (or an author filter is given), and respects the same filters and hidden channels as the other queries.
+     */
+    stats(args: QueryFilters & { groupBy?: string; query?: string; includeBots?: boolean; sort?: string; limit?: number }): StatsResult {
+        const groupBy = (STATS_GROUPS as readonly string[]).includes(args.groupBy ?? "") ? (args.groupBy as StatsGroup) : "none";
+        const limit = clamp(args.limit, LIMITS.statsDefault, LIMITS.statsMax);
+        const filter = this.filters(args, "m");
+        if (typeof filter === "string") return { timezone: WARSAW_TZ, total: 0, groupBy, groups: [], truncated: false, note: filter };
+
+        let from = "messages m";
+        const params: (string | number)[] = [];
+        let match = "";
+        if (args.query?.trim()) {
+            const fts = buildFtsQuery(args.query);
+            if (!fts) return { timezone: WARSAW_TZ, total: 0, groupBy, groups: [], truncated: false, note: "Puste zapytanie — podaj co najmniej jedno słowo albo pomiń query." };
+            from = "messages_fts f JOIN messages m ON m.seq = f.rowid";
+            match = "AND messages_fts MATCH ?";
+            params.push(fts);
+        }
+        const skipBots = !args.includeBots && !args.author?.trim() ? " AND m.is_bot = 0" : "";
+        const where = `WHERE 1 = 1 ${match} ${filter.sql}${skipBots}`;
+        params.push(...filter.params);
+
+        const totals = this.db.prepare(`SELECT COUNT(*) AS n, MIN(m.created_at) AS first, MAX(m.created_at) AS last FROM ${from} ${where}`).get(...params) as { n: number; first: number | null; last: number | null };
+        const base = { timezone: WARSAW_TZ, total: totals.n, groupBy, ...(totals.n > 0 ? { first: formatWarsaw(totals.first!), last: formatWarsaw(totals.last!) } : null) };
+        if (groupBy === "none" || totals.n === 0) return { ...base, groups: [], truncated: false };
+
+        const counts = new Map<string, number>();
+        const add = (key: string, n: number) => counts.set(key, (counts.get(key) ?? 0) + n);
+
+        if (groupBy === "author") {
+            const rows = this.db.prepare(`SELECT m.author_id AS id, MAX(m.author_name) AS name, COUNT(*) AS n FROM ${from} ${where} GROUP BY m.author_id`).all(...params) as { id: string; name: string; n: number }[];
+            for (const r of rows) add(r.id === this.selfId ? "Marvin" : mapGlobalNameNameToRealName[r.name], r.n);
+        } else if (groupBy === "channel") {
+            const rows = this.db.prepare(`SELECT m.channel_id AS id, COUNT(*) AS n FROM ${from} ${where} GROUP BY m.channel_id`).all(...params) as { id: string; n: number }[];
+            const named = this.db.prepare("SELECT c.name, p.name AS parent FROM channels c LEFT JOIN channels p ON p.id = c.parent_id WHERE c.id = ?");
+            for (const r of rows) {
+                const c = named.get(r.id) as { name: string | null; parent: string | null } | undefined;
+                add(c?.parent ? `${c.name ?? r.id} (wątek w #${c.parent})` : (c?.name ?? r.id), r.n);
+            }
+        } else {
+            // Buckets are whole UTC hours (Warsaw offsets are whole hours), then folded into Warsaw-time days/months/etc.
+            const rows = this.db.prepare(`SELECT m.created_at / 3600000 AS h, COUNT(*) AS n FROM ${from} ${where} GROUP BY h`).all(...params) as { h: number; n: number }[];
+            for (const r of rows) add(timeBucket(r.h * 3600000, groupBy), r.n);
+        }
+
+        const sortBy = args.sort === "count" || args.sort === "key" ? args.sort : (["month", "weekday", "hour"].includes(groupBy) ? "key" : "count");
+        let groups = [...counts].map(([key, count]) => ({ key, count, share: Math.round((count / totals.n) * 1000) / 10 }));
+        if (sortBy === "key") {
+            groups.sort(groupBy === "weekday" ? (a, b) => WEEKDAYS.indexOf(a.key) - WEEKDAYS.indexOf(b.key) : (a, b) => a.key.localeCompare(b.key));
+        } else {
+            groups.sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
+        }
+        const truncated = groups.length > limit;
+        groups = groups.slice(0, limit);
+        return { ...base, groups, truncated };
     }
 
     listChannels(): ChannelListing[] {
