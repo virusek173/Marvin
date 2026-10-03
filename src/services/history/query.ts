@@ -3,6 +3,7 @@ import { foldForSearch } from "./db.js";
 import { cutText, mapGlobalNameNameToRealName } from "../../utils/helpers.js";
 import { formatWarsaw, parseWarsaw, WARSAW_TZ } from "./time.js";
 import { renderBody } from "./context.js";
+import { PhraseCount, PhraseCounter } from "./phrases.js";
 
 export const LIMITS = {
     searchDefault: 10,
@@ -63,6 +64,11 @@ export interface StatsResult {
     /** True when there were more groups than `limit`. */
     truncated: boolean;
     note?: string;
+}
+
+export interface PhrasesResult {
+    words: PhraseCount[];
+    pairs: PhraseCount[];
 }
 
 export interface PersonProfile {
@@ -375,6 +381,16 @@ export class HistoryQuery {
         const truncated = groups.length > limit;
         groups = groups.slice(0, limit);
         return { ...base, groups, truncated };
+    }
+
+    /** Most common words and word pairs in human messages matching the filters (links, mentions and filler words ignored). */
+    phrases(args: QueryFilters & { words?: number; pairs?: number }): PhrasesResult {
+        const filter = this.filters(args, "m");
+        if (typeof filter === "string") return { words: [], pairs: [] };
+        const counter = new PhraseCounter();
+        const rows = this.db.prepare(`SELECT m.content FROM messages m WHERE m.is_bot = 0 ${filter.sql}`).iterate(...filter.params) as IterableIterator<{ content: string }>;
+        for (const r of rows) counter.add(r.content);
+        return { words: counter.top("words", args.words ?? 10, 3), pairs: counter.top("pairs", args.pairs ?? 5, 3) };
     }
 
     /** Generated profile of one person (real name or any of their usernames), or of everyone when no person is given. */

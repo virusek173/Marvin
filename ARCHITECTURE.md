@@ -22,6 +22,7 @@ src/
 │       ├── discordSource.ts  The only place that talks to Discord for history — fetch only
 │       ├── context.ts     HistoryContext: last 30 messages of a channel from the archive
 │       ├── profiles.ts    ProfileService: periodic per-person profiles written to the `profiles` table
+│       ├── report.ts      Monthly statistics report: exact numbers + unicode bar charts (phrases.ts counts words/pairs)
 │       ├── query.ts       Read-only query layer (separate readonly connection)
 │       ├── tools.ts       The tools exposed to the model (wrap query.ts only)
 │       └── time.ts        Warsaw-time formatting/parsing
@@ -120,6 +121,14 @@ index.ts: checks days since last summary (data/last_summary.json)
 [>= SERVER_SUMMARY_INTERVAL_DAYS] client.sendServerSummary(lastSummaryAt)
     ↓
 reads everything since lastSummaryAt from the archive (all non-excluded channels, max 1500 messages)
+
+same 20:00 cron, MONTHLY_REPORT_ENABLED=true:
+    ↓
+index.ts: previous month not yet in data/last_report.json (baseline only on first run unless it is the 1st)
+    ↓
+client.sendMonthlyReport(month) → HistoryQuery.stats/phrases (exact counts) → model writes intro + award titles
+    ↓
+channel(BOTS_CHANNEL_ID): commentary + bar charts rendered from the numbers
 ```
 
 ## Data Models

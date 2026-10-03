@@ -23,6 +23,7 @@ import {
     getMarvinMotivationSystemPrompt,
     getPerplexityToMarvinResponsePrompt,
     getProfileSystemPrompt,
+    getMonthlyReportSystemPrompt,
     WAKE_UP_MESSAGE_PROMPT,
     HISTORY_TOOLS_PROMPT
 } from "../utils/prompts.js";
@@ -36,6 +37,7 @@ import { INTERNET_NOTICE, linksNotice, isTechnicalMarvinContent } from "./histor
 import { HistoryContext, renderLine } from "./history/context.js";
 import { HistorySync } from "./history/sync.js";
 import { ProfileService } from "./history/profiles.js";
+import { ReportMonth, REPORT_MIN_MESSAGES, collectMonthlyReport, parseMonthKey, renderReportBlock, reportFacts } from "./history/report.js";
 import { DiscordJsSource } from "./history/discordSource.js";
 import { historyLog } from "./history/log.js";
 
@@ -129,6 +131,8 @@ export class DiscordServce {
 
                 this.startHistorySync();
                 void this.updateProfiles();
+                const forcedMonth = parseMonthKey(process.env.MONTHLY_REPORT_FORCE_MONTH ?? "");
+                if (forcedMonth) void this.sendMonthlyReport(forcedMonth);
 
                 const wakeUpMessage = await MODEL.interact(WAKE_UP_MESSAGE_PROMPT);
                 channel.send(wakeUpMessage?.content ?? "Wstałem.");
@@ -331,6 +335,38 @@ export class DiscordServce {
             }
         } catch (error: any) {
             return exceptionHandler(error, channel);
+        }
+    }
+
+    /**
+     * Posts the statistics report for one calendar month to the bots channel: Marvin's commentary (model) followed by
+     * bar charts built from exact counts. Returns true when something was posted; a month with too few messages is skipped.
+     */
+    async sendMonthlyReport(month: ReportMonth): Promise<boolean> {
+        const channel = this.client.channels.cache.get(BOTS_CHANNEL_ID);
+        if (!channel || !this.historyQuery) return false;
+
+        try {
+            const data = collectMonthlyReport(this.historyQuery, month);
+            if (data.total < REPORT_MIN_MESSAGES) {
+                historyLog.info(`raport ${month.key}: tylko ${data.total} wiadomości — pomijam`);
+                return false;
+            }
+
+            channel.sendTyping();
+            const response = await MODEL.contextInteract([
+                MODEL.messageFactory(getMonthlyReportSystemPrompt(), 'system'),
+                MODEL.messageFactory(reportFacts(data)),
+            ], SERVER_SUMMARY_MODEL_NAME);
+            const commentary = typeof response?.content === "string" ? stripLeadingTimestampPrefix(response.content).trim() : "";
+
+            const text = [`📊 **Statystyki serwera — ${month.label}**`, commentary, renderReportBlock(data)].filter(Boolean).join("\n\n");
+            for (const part of splitForDiscord(text)) await channel.send(part);
+            historyLog.info(`raport ${month.key}: wysłano (${data.total} wiadomości)`);
+            return true;
+        } catch (error: any) {
+            exceptionHandler(error, channel);
+            return false;
         }
     }
 
