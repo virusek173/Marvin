@@ -76,6 +76,24 @@ context and of the periodic summary.
   Discord delete/edit/moderation call); the model's tools use a separate `readonly` SQLite connection. The hard
   guarantee is the bot role's permissions in Discord (no Manage Messages/Channels/Threads, Kick, Ban, Administrator).
 
+### Database schema (`history/db.ts`)
+
+| Table | Purpose |
+|---|---|
+| `messages` | One row per message: `seq` (PK), `id` (Discord id, TEXT, UNIQUE), `channel_id`, `parent_id` (thread → parent channel), `author_id`, `author_name`, `is_bot`, `content`, `embeds_text`, `attachments_text`, `reply_to_id`, `type`, `is_technical`, `created_at` (integer) |
+| `messages_fts` | FTS5 virtual table, one column `body` = content + embeds + attachments, tokenizer `unicode61 remove_diacritics 2`; `ł` is folded to `l` by hand on both sides (`foldForSearch`). Kept in sync by triggers `messages_ai/ad/au`; `rowid` = `messages.seq` |
+| `channels` | `id`, `name`, `parent_id` — lets queries filter by channel name and include threads |
+| `sync_state` | Per-channel backfill cursor, last attempt/success, last error |
+| `profiles` | Generated person profiles; `last_seq` is the archive position the profile was built up to |
+
+**Indexes.** `idx_messages_channel_time (channel_id, created_at)` serves context and `get_messages`; `idx_messages_author_time (author_id, created_at)` serves author filters and `get_stats`; `idx_messages_time (created_at)` serves pure time ranges (summary, "yesterday"). They are composite and used left to right, so a time-only query cannot use the first two. `seq` needs no index: it is the table's `rowid`, so the table itself is the B-tree keyed by `seq`. `id` has the automatic index from `UNIQUE`.
+
+**Why `seq` and `id` both exist.** `id` is the Discord snowflake and identifies a message to the outside world (links, `reply_to_id`, idempotent upserts). It is stored as TEXT because ~19-digit ids exceed JS number precision; code compares them with `BigInt` / `CAST(id AS INTEGER)`. `seq` is a small autoincrement integer used internally: FTS5 needs an integer `rowid`, and it keeps indexes and FTS doclists compact. `AUTOINCREMENT` guarantees a `seq` is never reused after a delete.
+
+**`seq` is insertion order, not time.** A backfill inserts old messages after newer live ones, so a 2024 message can have a higher `seq` than yesterday's. Never order by `seq` to get chronology — queries sort by `created_at` (tie-break on `id`). `seq` is only a "written after X" watermark, which is how `profiles.last_seq` works.
+
+**FTS5 is built at write time**, not at query time and without a dictionary: each insert tokenizes the text and appends the message to the posting list of every word. There is no stemming, so `search_messages` matches word prefixes and the prompt tells the model to search by stems (`kurtk`).
+
 ## Message Routing Flow
 
 ```
