@@ -27,7 +27,6 @@ export interface PeopleMap {
     WiktorId: DiscordId;
     MadziaId: DiscordId;
     MasonId: DiscordId;
-    PodsumowusId: DiscordId;
     MugdaId: DiscordId;
     WibotId: DiscordId;
 }

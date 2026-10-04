@@ -1,5 +1,5 @@
-import { QUOTE_PROMPT } from "./prompts.js";
 import { Message } from "../services/openai.js";
+import { ERROR_MESSAGE_PREFIX } from "../services/history/technical.js";
 
 /** Proxy handler that returns the property value, the property name, or empty string as fallback. */
 export const proxyHandler = {
@@ -49,29 +49,56 @@ export const stripImages = (context: Message[]): Message[] =>
   });
 
 /**
- * Strips a leading "[YYYY.MM.DD HH:MM] Name: " prefix from a model response.
+ * Strips a leading "Name (YYYY.MM.DD HH:MM): " (or the older "[YYYY.MM.DD HH:MM] Name: ") prefix from a model response.
  * Context messages are stored with this prefix so the model has time/sender
  * awareness, but the model sometimes imitates the pattern and echoes it back
  * at the start of its own reply — this removes it before the text reaches Discord.
  */
 export const stripLeadingTimestampPrefix = (content: string): string =>
-  content.replace(/^\s*\[\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}\]\s*[^\]\n:]+:\s*/, "");
+  content.replace(/^\s*(?:\[\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}\]\s*[^\]\n:]+|[^()\n:]{1,40}\(\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}\)):\s*/, "");
 
-/** Parses the leading "[YYYY.MM.DD HH:MM]" prefix of a context message (process-local time); null if absent. */
+const TRAILING_CITE = /^(\s*(?:[-*•]|\d+[.)])\s+)?(.*?)\s*(\[\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}\]\(<https?:\/\/[^>\s]+>\))\s*$/;
+const LEADING_CITE = /^\s*(?:(?:[-*•]|\d+[.)])\s+)?\[\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}\]\(</;
+
+/** The model keeps putting message links at the end of a line; moves a single trailing `cite` link to the start of the line (after the bullet). */
+export const moveCitesToLineStart = (text: string): string =>
+  text.split("\n").map(line => {
+    if (LEADING_CITE.test(line)) return line;
+    const m = TRAILING_CITE.exec(line);
+    if (!m || !m[2].trim()) return line;
+    return `${m[1] ?? ""}${m[3]} ${m[2].trim()}`;
+  }).join("\n");
+
+/** Splits a long reply into Discord-sized parts, preferring paragraph, line, then word boundaries; the last part is cut if `maxParts` is exceeded. */
+export const splitForDiscord = (text: string, maxLength = 1950, maxParts = 4): string[] => {
+  const parts: string[] = [];
+  let rest = text.trim();
+  while (rest.length > maxLength && parts.length < maxParts - 1) {
+    const window = rest.slice(0, maxLength);
+    const boundary = ["\n\n", "\n", " "].map(s => window.lastIndexOf(s)).find(i => i >= maxLength / 2);
+    const cut = boundary ?? maxLength;
+    parts.push(rest.slice(0, cut).trimEnd());
+    rest = rest.slice(cut).trimStart();
+  }
+  if (rest) parts.push(rest.slice(0, maxLength));
+  return parts;
+};
+
+/** Parses the timestamp of a context line, "Name (YYYY.MM.DD HH:MM): ..." or the older "[YYYY.MM.DD HH:MM] Name: ..." (process-local time); null if absent. */
 export const parseContextTimestamp = (content: unknown): Date | null => {
   if (typeof content !== "string") return null;
-  const m = content.match(/^\s*\[(\d{4})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2})\]/);
+  const m = content.match(/^\s*(?:\[|[^()\n:]{1,40}\()(\d{4})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2})[\])]/);
   return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : null;
 };
 
 export const exceptionHandler = (error: any, message: any) => {
   console.log("err: ", error?.message);
 
-  const text = `Wywaliłem się... POWÓD: ${error?.message?.substring(0, 1800)}\nZapytaj mnie proszę ponownie.`;
+  const text = `${ERROR_MESSAGE_PREFIX} POWÓD: ${error?.message?.substring(0, 1800)}\nZapytaj mnie proszę ponownie.`;
   const payload = { content: text, files: ['assets/mila_kawka.png'] };
 
   const send = message.reply?.bind(message) ?? message.send?.bind(message);
-  send?.(payload)?.catch(() => send?.(text));
+  send?.(payload)?.catch(() => send?.(text)?.catch(() => {}));
 }
 
 /**
@@ -92,13 +119,9 @@ export const pushWithLimit = (array: any[], item: any, limit: number = 10) => {
   return array;
 };
 
-
-/**
- * Builds a prompt for generating a motivational quote that differs from previous ones.
- * Pass the `quotesArray` from index.ts (kept at max 10 entries via pushWithLimit).
- *
- * @param quotesArray - Array of previously used quotes to avoid repetition
- */
-export const quotePromptFactory = (quotesArray: string[]) => `${QUOTE_PROMPT}
-Cytat musi się różnić od podanych cytatów.
-Poprzednie cytaty: ${quotesArray.join("\n,")}`;
+/** First `max` UTF-16 units of the text, without leaving half of an emoji (a lone surrogate makes the OpenAI API reject the request). */
+export const cutText = (text: string, max: number): string => {
+  if (text.length <= max) return text;
+  const end = /[\uD800-\uDBFF]/.test(text[max - 1] ?? "") ? max - 1 : max;
+  return text.substring(0, end);
+};

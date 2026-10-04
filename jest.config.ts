@@ -6,4 +6,5 @@ module.exports = {
     "(.+)\\.js": "$1",
   },
   extensionsToTreatAsEsm: [".ts"],
+  testPathIgnorePatterns: ["/node_modules/", "/dest/"],
 };

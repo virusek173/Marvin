@@ -73,7 +73,7 @@ export class Perplexity {
         return [...context].reduce((acc, message) => {
             const textContent = flattenContent(message.content);
             if (acc.length === 0) {
-                acc.push({ role: message.role, content: textContent });
+                acc.push({ role: message.role as TextMessage["role"], content: textContent });
                 return acc;
             }
 
@@ -82,7 +82,7 @@ export class Perplexity {
             if (lastAdded.role === message.role) {
                 acc[acc.length - 1].content += `\n${textContent}`;
             } else {
-                acc.push({ role: message.role, content: textContent });
+                acc.push({ role: message.role as TextMessage["role"], content: textContent });
             }
             return acc;
 

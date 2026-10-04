@@ -1,30 +1,26 @@
 import cron from "node-cron";
 import dotenv from "dotenv";
 import * as fs from "fs";
-import { OpenAi } from "./services/openai.js";
 import { DiscordServce } from "./services/discord.js";
-import { QUOTE_MODEL_NAME } from "./utils/consts.js";
-import { pushWithLimit, quotePromptFactory } from "./utils/helpers.js";
+import { previousMonth, warsawDayOfMonth } from "./services/history/report.js";
 
 dotenv.config();
 
 const DATA_DIR = "data";
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const LAST_SUMMARY_FILE = `${DATA_DIR}/last_summary.json`;
+const LAST_REPORT_FILE = `${DATA_DIR}/last_report.json`;
 
-const quotesArray: string[] = [];
-const openai = new OpenAi();
 const croneMap = {
-  EVERY_DAY_SIX_AM: "0 6 * * *",
   EVERY_DAY_EIGHT_PM: "0 20 * * *",
-  EVERY_MINUTE: "* * * * *",
+  EVERY_DAY_FOUR_AM: "0 4 * * *",
 };
 const croneOptions = {
   timezone: "Europe/Warsaw",
 };
-const WITH_INIT_MESSAGE = false;
-const WITH_CRON = process.env.WITH_CRON !== "false";
-const SERVER_SUMMARY_INTERVAL_DAYS = 2;
+const DEFAULT_SERVER_SUMMARY_INTERVAL_DAYS = 3;
+const configuredInterval = Number(process.env.SERVER_SUMMARY_INTERVAL_DAYS);
+const SERVER_SUMMARY_INTERVAL_DAYS = configuredInterval > 0 ? configuredInterval : DEFAULT_SERVER_SUMMARY_INTERVAL_DAYS;
 
 let client: any = null;
 
@@ -48,33 +44,52 @@ const writeLastSummaryAt = (date: Date): void => {
   }
 };
 
-const init = async (withInitMessage: boolean | undefined = true) => {
-  try {
-    client?.destroy();
-    const quotePro = quotePromptFactory(quotesArray);
-    const quote = await openai.interact(quotePromptFactory(quotesArray), QUOTE_MODEL_NAME)
-    pushWithLimit(quotesArray, quote?.content);
-    client = new DiscordServce(quote?.content, withInitMessage);
-  } catch (error: any) {
-    console.log("Unexpected Error: ", error?.message);
-  }
-};
-
-init(WITH_INIT_MESSAGE);
-
-const croneTime = croneMap.EVERY_DAY_SIX_AM;
-
-if (WITH_CRON) {
-  console.log(`Uruchamiam crone z czasem: ${croneTime}`);
-  cron.schedule(croneTime, () => init(), croneOptions);
-} else {
-  console.log("Cron wyłączony (WITH_CRON=false).");
+try {
+  client = new DiscordServce();
+} catch (error: any) {
+  console.log("Unexpected Error: ", error?.message);
 }
 
 const roundToMinute = (ms: number): number => Math.round(ms / 60000) * 60000;
 
 console.log(`Uruchamiam podsumowanie serwera co ${SERVER_SUMMARY_INTERVAL_DAYS} dni.`);
+cron.schedule(croneMap.EVERY_DAY_FOUR_AM, () => {
+  client?.updateProfiles();
+}, croneOptions);
+const readLastReportMonth = (): string | null => {
+  try {
+    if (fs.existsSync(LAST_REPORT_FILE)) return JSON.parse(fs.readFileSync(LAST_REPORT_FILE, "utf8")).lastReportMonth ?? null;
+  } catch (error) {
+    console.error("Error reading last report file:", error);
+  }
+  return null;
+};
+
+const writeLastReportMonth = (month: string): void => {
+  try {
+    fs.writeFileSync(LAST_REPORT_FILE, JSON.stringify({ lastReportMonth: month }, null, 2));
+  } catch (error) {
+    console.error("Error writing last report file:", error);
+  }
+};
+
+// Sends the report for the previous month once. The first run only records a baseline unless it is the 1st, so enabling the
+// report mid-month does not post at once; after downtime on the 1st the missed report goes out on the next 20:00.
+const sendMonthlyReportIfDue = (): void => {
+  if (process.env.MONTHLY_REPORT_ENABLED !== "true") return;
+  const month = previousMonth(Date.now());
+  const last = readLastReportMonth();
+  if (last === null && warsawDayOfMonth(Date.now()) !== 1) {
+    writeLastReportMonth(month.key);
+    return;
+  }
+  if (last !== null && last >= month.key) return;
+  writeLastReportMonth(month.key);
+  void client?.sendMonthlyReport(month);
+};
+
 cron.schedule(croneMap.EVERY_DAY_EIGHT_PM, () => {
+  sendMonthlyReportIfDue();
   const lastSummaryAt = readLastSummaryAt();
   if (!lastSummaryAt) {
     writeLastSummaryAt(new Date());

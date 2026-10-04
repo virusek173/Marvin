@@ -1,6 +1,6 @@
 # Marvin - Motivational Discord Bot
 
-Marvin is a Discord bot that sends a daily motivational quote every morning at 6:00 AM (Warsaw time) and answers questions from server members using multiple AI models.
+Marvin is a Discord bot that answers questions from server members using multiple AI models and posts a periodic server summary.
 
 ## Quick Start
 
@@ -20,10 +20,11 @@ npm run marvin
 
 ```
 src/
-├── index.ts               Entry point — cron scheduler, quote generation
+├── index.ts               Entry point — client startup, crons (summary, monthly report, profiles)
 ├── services/
 │   ├── discord.ts         Bot logic — message handling and AI routing
-│   ├── context.ts         Per-channel conversation memory (max 30 messages)
+│   ├── context.ts         In-memory FIFO context (fallback only)
+│   ├── history/           SQLite message archive: live write, backfill, context, read-only search tools, profiles, monthly report
 │   ├── openai.ts          OpenAI API wrapper (primary AI + decider)
 │   ├── grok.ts            Grok/X.ai API wrapper
 │   ├── perplexity.ts      Perplexity API wrapper (real-time web search)
@@ -38,9 +39,21 @@ src/
 
 ## How It Works
 
-1. **Every day at 6 AM** — Marvin generates a unique motivational quote and sends a personalized greeting to the configured Discord channel
+1. **Every `SERVER_SUMMARY_INTERVAL_DAYS` days (default 3) at 20:00 (Warsaw)** — Marvin posts a digest of recent server activity to the bots channel
 2. **When mentioned** (`@Marvin` or reply) — Marvin reads the conversation context, decides whether the question needs internet access (Perplexity) or can be answered from knowledge (OpenAI/Grok), and replies accordingly
-3. **All messages** — stored in per-channel context (last 30 messages) persisted in `context.json`
+3. **All messages** — archived in a local SQLite database (`data/history.db`); the last 30 messages of a channel are the conversation context
+4. **History questions** ("what did Jacek write about the holiday?", "who wrote the most?", "what does Madzia like?") — Marvin uses read-only tools over the archive: full-text search, time ranges, surrounding messages and whole conversations, exact statistics (counts by author, channel, day, hour...) and generated person profiles. Set `HISTORY_SYNC_ENABLED=true` to import the whole server history; the bot role must not have Manage Messages, Manage Channels, Manage Threads, Kick, Ban or Administrator
+5. **Person profiles** (opt-in, `PROFILES_ENABLED=true`) — short descriptions of each regular participant (and the other bots), generated from their archived messages and refreshed when they are a week old and enough new messages arrived. Marvin also uses the profile of the person he is answering to fit his reply, and can look up anyone's profile on request
+6. **Monthly statistics report** (opt-in, `MONTHLY_REPORT_ENABLED=true`) — on the 1st of the month at 20:00 (Warsaw) Marvin posts the previous month's report to the bots channel: top authors, loudest days, busiest hour, channels, most common words and phrases as bar charts with exact numbers, plus his commentary and award titles. `MONTHLY_REPORT_FORCE_MONTH=YYYY-MM` posts a chosen month once at startup (for testing)
+7. **Emoji reactions** — each human message has a 2% chance of a reaction: one cheap model call reads only that message and picks the best-fitting Unicode or server custom emoji. Needs the **Add Reactions** permission on the bot role
+
+## Configuration
+
+Copy `.env.example` to `.env`. Optional switches (all off unless set to `true`): `HISTORY_SYNC_ENABLED`, `PROFILES_ENABLED`, `MONTHLY_REPORT_ENABLED`. `EXCLUDED_CHANNEL_IDS` lists channels that are never archived, searched or summarized. See the environment table in [CLAUDE.md](CLAUDE.md) for every variable.
+
+## Staging
+
+`make staging-restart` / `make staging-logs` run a second instance (own bot token, own data volume) for testing without touching production.
 
 ## Adding a New AI Service
 
