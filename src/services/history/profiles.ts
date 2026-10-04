@@ -43,10 +43,10 @@ export class ProfileService {
         const people = new Map<string, { names: string[]; messages: number; isBot: boolean }>();
         for (const author of this.db.getProfileAuthors(this.options.excludedChannelIds, this.options.selfId)) {
             const name = mapGlobalNameNameToRealName[author.authorName];
-            const person = people.get(name) ?? { names: [], messages: 0, isBot: false };
+            const person = people.get(name) ?? { names: [], messages: 0, isBot: true };
             person.names.push(author.authorName);
             person.messages += author.messages;
-            person.isBot ||= author.isBot;
+            person.isBot = person.isBot && author.isBot;
             people.set(name, person);
         }
 

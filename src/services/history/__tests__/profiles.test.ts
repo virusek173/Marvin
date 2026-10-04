@@ -82,6 +82,17 @@ describe("ProfileService", () => {
         expect(db.getProfile("Marvin")).toBeUndefined();
     });
 
+    it("treats a person as human when only one of their mapped accounts is a bot", async () => {
+        write(40, { authorId: "u2", authorName: "magda1812", isBot: false });
+        write(5, { authorId: "bot2", authorName: "Odyn", isBot: true });
+
+        await service().updateAll();
+
+        const user: string = ask.mock.calls[0][1];
+        expect(user).toContain("Osoba: Madzia");
+        expect(user).not.toContain("Bot: Madzia");
+    });
+
     it("leaves a fresh profile alone, then refreshes it incrementally with the old text and only new messages", async () => {
         write(40);
         await service().updateAll();
