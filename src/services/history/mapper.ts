@@ -1,4 +1,11 @@
 import { isTechnicalMarvinContent } from "./technical.js";
+import { customEmojiKey, unicodeEmojiKey } from "./emoji.js";
+
+export interface ReactionCount {
+    /** `:name:` for a server emoji, otherwise the Unicode character (see emoji.ts). */
+    emoji: string;
+    count: number;
+}
 
 export interface ArchiveRow {
     id: string;
@@ -14,6 +21,8 @@ export interface ArchiveRow {
     type: number;
     isTechnical: boolean;
     createdAt: number;
+    /** Reactions the message had when it was fetched. Absent when the source does not carry them. */
+    reactions?: ReactionCount[];
 }
 
 export interface MapOptions {
@@ -58,6 +67,21 @@ export const describeAttachments = (message: any, imageDescriptions?: string[]):
     return parts.join(" ");
 };
 
+/** Reactions of a Discord message with variants of one emoji (skin tones) merged; undefined when the message carries none to read. */
+export const collectReactions = (message: any): ReactionCount[] | undefined => {
+    const cache = message?.reactions?.cache;
+    if (!cache) return undefined;
+    const merged = new Map<string, number>();
+    for (const reaction of cache.values()) {
+        const emoji = reaction?.emoji;
+        if (!emoji) continue;
+        const key = emoji.id ? customEmojiKey(emoji.name ?? emoji.id) : unicodeEmojiKey(emoji.name ?? "");
+        if (!key) continue;
+        merged.set(key, (merged.get(key) ?? 0) + (Number(reaction.count) || 0));
+    }
+    return [...merged].filter(([, count]) => count > 0).map(([emoji, count]) => ({ emoji, count }));
+};
+
 export const buildArchiveRow = (message: any, options: MapOptions = {}): ArchiveRow => {
     const { selfId, selfUsername, imageDescriptions } = options;
     const author = message.author;
@@ -80,5 +104,6 @@ export const buildArchiveRow = (message: any, options: MapOptions = {}): Archive
         type: Number(message.type ?? 0),
         isTechnical: isSelf && isTechnicalMarvinContent(content),
         createdAt: message.createdTimestamp ?? new Date(message.createdAt).getTime(),
+        reactions: collectReactions(message),
     };
 };

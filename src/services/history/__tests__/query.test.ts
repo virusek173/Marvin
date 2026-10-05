@@ -440,6 +440,108 @@ describe("HistoryQuery", () => {
         });
     });
 
+    describe("emoji and reactions", () => {
+        const add = (over: Partial<ArchiveRow>, reactions: { emoji: string; count: number }[] = []) => {
+            const r = row(over);
+            db.insertLive(r);
+            if (reactions.length) db.setReactions(r.id, reactions);
+            return r;
+        };
+
+        it("filters by emoji in the text and by reaction received, accepting several spellings", () => {
+            add({ content: "haha 😂😂" });
+            add({ content: "<:pepe:1> smutek" }, [{ emoji: "😂", count: 2 }]);
+            add({ content: "zwykły tekst" }, [{ emoji: ":pepe:", count: 1 }]);
+            expect(q.stats({ emoji: "😂" }).total).toBe(1);
+            expect(q.stats({ emoji: ":pepe:" }).total).toBe(1);
+            expect(q.stats({ emoji: "PEPE" }).total).toBe(1);
+            expect(q.stats({ reaction: "😂" }).total).toBe(1);
+            expect(q.stats({ reaction: "pepe" }).total).toBe(1);
+            expect(q.stats({ emoji: "😂", reaction: "😂" }).total).toBe(0);
+            expect(q.search({ query: "tekst", reaction: ":pepe:" }).count).toBe(1);
+            expect(q.range({ emoji: "😂" }).messages).toHaveLength(1);
+            expect(q.stats({ emoji: "to nie emoji!" }).note).toMatch(/Nie rozpoznaję emoji/);
+        });
+
+        it("reports how many times an emoji was used next to the number of messages containing it", () => {
+            add({ content: "😂😂😂" });
+            add({ content: "ha 😂" });
+            add({ content: "nic" });
+            expect(q.stats({ emoji: "😂" })).toMatchObject({ total: 2, emojiUses: 4 });
+            expect(q.stats({})).not.toHaveProperty("emojiUses");
+        });
+
+        it("groups by emoji used in text and by reaction, with the share of all uses", () => {
+            add({ content: "😂😂 i 👍" });
+            add({ content: "<:pepe:1> 😂" }, [{ emoji: "👍", count: 3 }, { emoji: "😂", count: 1 }]);
+            add({ content: "bot 😂", authorId: "u9", authorName: "Rescheduler", isBot: true });
+
+            const used = q.stats({ groupBy: "emoji" });
+            expect(used.groups[0]).toMatchObject({ key: "😂", count: 3 });
+            expect(used.groups.slice(1).map(g => g.key).sort()).toEqual([":pepe:", "👍"]);
+            expect(used.totalUses).toBe(5);
+
+            const reacted = q.stats({ groupBy: "reaction" });
+            expect(reacted.groups.map(g => [g.key, g.count])).toEqual([["👍", 3], ["😂", 1]]);
+            expect(reacted.totalUses).toBe(4);
+            expect(q.stats({ groupBy: "emoji", author: "Rescheduler" }).groups).toEqual([expect.objectContaining({ key: "😂", count: 1 })]);
+        });
+
+        it("adds received reaction counts with withReactions and sorts by them", () => {
+            add({ authorId: "u1", authorName: "Vajrusek" }, [{ emoji: "👍", count: 2 }]);
+            add({ authorId: "u2", authorName: "Madzia" }, [{ emoji: "😂", count: 5 }, { emoji: "👍", count: 1 }]);
+            add({ authorId: "u2", authorName: "Madzia" });
+
+            expect(q.stats({ groupBy: "author" }).groups[0]).not.toHaveProperty("reactions");
+            const res = q.stats({ groupBy: "author", sort: "reactions" });
+            expect(res.reactions).toBe(8);
+            expect(res.groups.map(g => [g.key, g.reactions])).toEqual([["Madzia", 6], ["Jacek", 2]]);
+
+            const onlyLaugh = q.stats({ groupBy: "author", withReactions: true, reaction: "😂" });
+            expect(onlyLaugh.groups).toEqual([expect.objectContaining({ key: "Madzia", reactions: 5 })]);
+        });
+
+        it("renders reactions on messages and server emoji as :name:", () => {
+            add({ content: "patrz <:pepe:123456789> proszę" }, [{ emoji: "😂", count: 2 }, { emoji: ":pepe:", count: 1 }]);
+            const msg = q.range({}).messages[0];
+            expect(msg.text).toBe("patrz :pepe: proszę");
+            expect(msg.reactions).toEqual({ "😂": 2, ":pepe:": 1 });
+        });
+
+        it("topReacted ranks by total reactions, or by one reaction, humans only by default", () => {
+            const a = add({ content: "skromna" }, [{ emoji: "👍", count: 1 }]);
+            const b = add({ content: "hit" }, [{ emoji: "👍", count: 2 }, { emoji: "😂", count: 6 }]);
+            const c = add({ content: "pochwała" }, [{ emoji: "👍", count: 4 }]);
+            add({ content: "bot", authorId: "u9", authorName: "Rescheduler", isBot: true }, [{ emoji: "👍", count: 50 }]);
+            add({ content: "bez reakcji" });
+
+            const top = q.topReacted({});
+            expect(top.messages.map(m => m.id)).toEqual([b.id, c.id, a.id]);
+            expect(top.messages[0]).toMatchObject({ reactionCount: 8, reactions: { "😂": 6, "👍": 2 } });
+
+            expect(q.topReacted({ reaction: "👍" }).messages.map(m => m.id)).toEqual([c.id, b.id, a.id]);
+            expect(q.topReacted({ limit: 1 }).messages).toHaveLength(1);
+            expect(q.topReacted({ includeBots: true }).messages[0].text).toBe("bot");
+            expect(q.topReacted({ reaction: "💀" }).note).toBeDefined();
+        });
+
+        it("hides reactions on the asking message and newer ones in a scoped view", () => {
+            const old = add({ content: "stare" }, [{ emoji: "👍", count: 1 }]);
+            const question = add({ content: "marvin, co lubimy?" }, [{ emoji: "👍", count: 9 }]);
+            const s = q.scoped(question.id);
+            expect(s.topReacted({}).messages.map(m => m.id)).toEqual([old.id]);
+            expect(s.stats({ groupBy: "reaction" }).totalUses).toBe(1);
+        });
+
+        it("keeps excluded channels out of emoji and reaction results", () => {
+            add({ content: "tajne 😂", channelId: "secret" }, [{ emoji: "😂", count: 4 }]);
+            open(["secret"]);
+            expect(q.stats({ groupBy: "emoji" }).groups).toEqual([]);
+            expect(q.stats({ groupBy: "reaction" }).groups).toEqual([]);
+            expect(q.topReacted({}).messages).toEqual([]);
+        });
+    });
+
     it("lists channels with names, thread parents and counts", () => {
         db.insertLive(row());
         db.insertLive(row({ channelId: "t1", parentId: "secret" }));

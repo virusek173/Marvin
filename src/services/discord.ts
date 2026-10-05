@@ -34,7 +34,7 @@ import { extractUrls, scrapeUrl } from "./scraper.js";
 import { MessageArchive, getExcludedChannelIds, HISTORY_DB_FILE } from "./history/archive.js";
 import { HistoryQuery } from "./history/query.js";
 import { buildHistoryTools } from "./history/tools.js";
-import { formatImageDescriptions } from "./history/mapper.js";
+import { formatImageDescriptions, collectReactions } from "./history/mapper.js";
 import { INTERNET_NOTICE, isTechnicalMarvinContent } from "./history/technical.js";
 import { HistoryContext, renderLine } from "./history/context.js";
 import { HistorySync } from "./history/sync.js";
@@ -169,7 +169,25 @@ export class DiscordServce {
             else void this.maybeReactWithEmoji(message);
         });
 
+        for (const event of ["messageReactionAdd", "messageReactionRemove", "messageReactionRemoveEmoji"]) {
+            this.client.on(event, (reaction: any) => void this.refreshReactions(reaction?.message));
+        }
+        this.client.on("messageReactionRemoveAll", (message: any) => void this.refreshReactions(message));
+
         this.client.login(DISCORD_CLIENT_TOKEN);
+    }
+
+    /** Re-reads the reactions of an archived message after someone added or removed one. Messages not in the archive are skipped; the backfill brings their reactions. */
+    private async refreshReactions(message: any): Promise<void> {
+        const db = this.archive.database;
+        if (!db || !message?.id || !db.hasMessage(message.id)) return;
+        try {
+            const full = message.partial ? await message.fetch() : message;
+            const reactions = collectReactions(full);
+            if (reactions) db.setReactions(full.id, reactions);
+        } catch (error: any) {
+            historyLog.warn(`reakcje wiadomości ${message.id} nie zaktualizowane: ${error?.message}`);
+        }
     }
 
     /** Gives the model read-only history tools over a separate readonly connection; without an archive Marvin simply has no tools. */

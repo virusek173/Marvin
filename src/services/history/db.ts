@@ -1,7 +1,11 @@
 import Database from "better-sqlite3";
 import * as fs from "fs";
 import * as path from "path";
-import { ArchiveRow } from "./mapper.js";
+import { ArchiveRow, ReactionCount } from "./mapper.js";
+import { extractEmoji } from "./emoji.js";
+
+/** 1: message_emoji built from existing content; 2: sync cursors reset once so the backfill re-reads messages together with their reactions. */
+const SCHEMA_VERSION = 2;
 
 /** SQLite's unicode61 folds diacritics but not "ł", so it is folded by hand on both the index and query side. */
 export const foldForSearch = (text: string): string => text.replace(/ł/g, "l").replace(/Ł/g, "L");
@@ -43,6 +47,22 @@ CREATE TABLE IF NOT EXISTS sync_state (
     last_success_at INTEGER,
     last_error TEXT
 );
+
+CREATE TABLE IF NOT EXISTS message_emoji (
+    message_id TEXT NOT NULL,
+    emoji TEXT NOT NULL,
+    n INTEGER NOT NULL,
+    PRIMARY KEY (message_id, emoji)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_message_emoji_emoji ON message_emoji(emoji);
+
+CREATE TABLE IF NOT EXISTS reactions (
+    message_id TEXT NOT NULL,
+    emoji TEXT NOT NULL,
+    n INTEGER NOT NULL,
+    PRIMARY KEY (message_id, emoji)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_reactions_emoji ON reactions(emoji);
 
 CREATE TABLE IF NOT EXISTS profiles (
     name TEXT PRIMARY KEY,
@@ -156,6 +176,10 @@ export class HistoryDb {
     private insertIgnoreStmt: Database.Statement;
     private upsertCursorStmt: Database.Statement;
     private writePageTx: (channelId: string, rows: ArchiveRow[], cursor: string | null) => number;
+    private clearEmojiStmt: Database.Statement;
+    private addEmojiStmt: Database.Statement;
+    private clearReactionsStmt: Database.Statement;
+    private addReactionStmt: Database.Statement;
 
     constructor(file: string) {
         if (file !== ":memory:") fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -164,6 +188,12 @@ export class HistoryDb {
         this.db.pragma("synchronous = NORMAL");
         this.db.pragma("busy_timeout = 5000");
         this.db.exec(SCHEMA);
+
+        this.clearEmojiStmt = this.db.prepare("DELETE FROM message_emoji WHERE message_id = ?");
+        this.addEmojiStmt = this.db.prepare("INSERT OR REPLACE INTO message_emoji (message_id, emoji, n) VALUES (?, ?, ?)");
+        this.clearReactionsStmt = this.db.prepare("DELETE FROM reactions WHERE message_id = ?");
+        this.addReactionStmt = this.db.prepare("INSERT OR REPLACE INTO reactions (message_id, emoji, n) VALUES (?, ?, ?)");
+        this.migrate();
 
         // The live row is the richer one (image descriptions), so it overwrites a backfilled marker row.
         this.upsertLiveStmt = this.db.prepare(`
@@ -185,7 +215,12 @@ export class HistoryDb {
                 last_success_at = excluded.last_success_at, last_error = NULL`);
         this.writePageTx = this.db.transaction((channelId: string, rows: ArchiveRow[], cursor: string | null) => {
             let inserted = 0;
-            for (const row of rows) inserted += this.insertIgnoreStmt.run(toParams(row)).changes;
+            for (const row of rows) {
+                const added = this.insertIgnoreStmt.run(toParams(row)).changes;
+                inserted += added;
+                if (added > 0) this.indexEmoji(row.id, row.content);
+                if (row.reactions) this.replaceReactions(row.id, row.reactions);
+            }
             if (cursor !== null) {
                 const current = this.getSyncState(channelId)?.cursor;
                 const furthest = current && BigInt(current) > BigInt(cursor) ? current : cursor;
@@ -227,8 +262,42 @@ export class HistoryDb {
             .run(channelId, Date.now(), error.substring(0, 1000));
     }
 
+    /** Live writes carry no reactions (the message is new); they arrive through setReactions. */
     insertLive(row: ArchiveRow): void {
-        this.upsertLiveStmt.run(toParams(row));
+        this.db.transaction(() => {
+            this.upsertLiveStmt.run(toParams(row));
+            this.indexEmoji(row.id, row.content);
+        })();
+    }
+
+    /** Replaces the stored reactions of a message that is in the archive; unknown messages are ignored (the sync brings their reactions later). */
+    setReactions(messageId: string, reactions: ReactionCount[]): boolean {
+        if (!this.hasMessage(messageId)) return false;
+        this.db.transaction(() => this.replaceReactions(messageId, reactions))();
+        return true;
+    }
+
+    private indexEmoji(messageId: string, content: string): void {
+        this.clearEmojiStmt.run(messageId);
+        for (const [emoji, n] of extractEmoji(content)) this.addEmojiStmt.run(messageId, emoji, n);
+    }
+
+    private replaceReactions(messageId: string, reactions: ReactionCount[]): void {
+        this.clearReactionsStmt.run(messageId);
+        for (const { emoji, count } of reactions) if (count > 0) this.addReactionStmt.run(messageId, emoji, count);
+    }
+
+    private migrate(): void {
+        const version = this.db.pragma("user_version", { simple: true }) as number;
+        if (version >= SCHEMA_VERSION) return;
+        this.db.transaction(() => {
+            if (version < 1) {
+                const rows = this.db.prepare("SELECT id, content FROM messages WHERE content <> ''").all() as { id: string; content: string }[];
+                for (const row of rows) this.indexEmoji(row.id, row.content);
+            }
+            if (version < 2) this.db.prepare("UPDATE sync_state SET cursor = NULL WHERE cursor IS NOT NULL").run();
+            this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
+        })();
     }
 
     upsertChannel(id: string, name: string | null, parentId: string | null): void {
@@ -306,6 +375,9 @@ export class HistoryDb {
         if (channelIds.length === 0) return 0;
         const marks = channelIds.map(() => "?").join(",");
         const run = this.db.transaction(() => {
+            const inScope = `SELECT id FROM messages WHERE channel_id IN (${marks}) OR parent_id IN (${marks})`;
+            this.db.prepare(`DELETE FROM message_emoji WHERE message_id IN (${inScope})`).run(...channelIds, ...channelIds);
+            this.db.prepare(`DELETE FROM reactions WHERE message_id IN (${inScope})`).run(...channelIds, ...channelIds);
             const deleted = this.db
                 .prepare(`DELETE FROM messages WHERE channel_id IN (${marks}) OR parent_id IN (${marks})`)
                 .run(...channelIds, ...channelIds).changes;

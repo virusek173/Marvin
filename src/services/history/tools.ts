@@ -7,6 +7,8 @@ const int = (description: string) => ({ type: "integer", description });
 const FILTER_PROPS = {
     author: str("Imię autora, np. Jacek, Madzia, Domin (opcjonalnie)."),
     reply_to_author: str("Tylko wiadomości, które są jawną odpowiedzią (funkcja 'odpowiedz') na wiadomość tej osoby, np. 'ile razy Wiktor odpisał Jackowi' = author Wiktor + reply_to_author Jacek (opcjonalnie)."),
+    emoji: str("Tylko wiadomości, w których TEKŚCIE pada to emoji, np. '😂' albo nazwa emoji serwera ':pepe:' (opcjonalnie)."),
+    reaction: str("Tylko wiadomości, które dostały TO emoji jako reakcję, np. '👍' albo ':pepe:' (opcjonalnie)."),
     channel: str("Nazwa kanału bez #, np. ogolny (opcjonalnie)."),
     from: str("Początek zakresu, czas warszawski: YYYY-MM-DD albo YYYY-MM-DDTHH:MM (opcjonalnie)."),
     to: str("Koniec zakresu włącznie, czas warszawski: YYYY-MM-DD albo YYYY-MM-DDTHH:MM (opcjonalnie)."),
@@ -19,6 +21,8 @@ const asInt = (value: unknown): number | undefined => (typeof value === "number"
 const filtersFrom = (a: Record<string, any>) => ({
     author: asString(a.author),
     replyTo: asString(a.reply_to_author),
+    emoji: asString(a.emoji),
+    reaction: asString(a.reaction),
     channel: asString(a.channel),
     from: asString(a.from),
     to: asString(a.to),
@@ -104,7 +108,8 @@ export const buildHistoryTools = (query: HistoryQuery): ToolSpec[] => [
             "Bez group_by zwraca tylko łączną liczbę pasujących wiadomości oraz datę pierwszej i ostatniej (bez filtrów dat to właśnie początek i koniec archiwum — użyj tego przy pytaniach o 'pierwszą wiadomość' i 'od początku'). " +
             "Z with_length=true dodaje średnią długość wiadomości (znaki i słowa; tylko wiadomości z tekstem), np. 'średnia długość wiadomości Wiktora i Masona' = group_by author, with_length. " +
             "Z filtrem reply_to_author liczy odpowiedzi jednej osoby na wiadomości drugiej. " +
-            "Z filtrem reply_to_author liczy odpowiedzi jednej osoby na wiadomości drugiej.",
+            "Emoji: group_by=emoji daje najczęstsze emoji w TEKŚCIE wiadomości (count = liczba użyć), group_by=reaction najczęstsze emoji użyte jako REAKCJE na pasujące wiadomości; filtr emoji zawęża do wiadomości z emoji w tekście (total = liczba takich wiadomości, emojiUses = ile razy emoji padło; na 'ile razy wysłał X' odpowiadaj emojiUses), filtr reaction do wiadomości, które dostały taką reakcję. " +
+            "Z with_reactions=true dodaje łączną liczbę otrzymanych reakcji (np. 'kto dostaje najwięcej reakcji' = group_by author, sort reactions). Wiadomo tylko, ile reakcji wiadomość dostała, nie kto je dał.",
         parameters: {
             type: "object",
             properties: {
@@ -113,7 +118,8 @@ export const buildHistoryTools = (query: HistoryQuery): ToolSpec[] => [
                 ...FILTER_PROPS,
                 include_bots: { type: "boolean", description: "true = wliczaj też wiadomości botów, w tym Marvina (domyślnie pomijane)." },
                 with_length: { type: "boolean", description: "true = dodaj średnią długość wiadomości (avgChars, avgWords, textMessages) do sumy i każdej grupy." },
-                sort: { type: "string", enum: ["count", "key", "length"], description: "count = od największej liczby, key = chronologicznie / alfabetycznie, length = od najdłuższej średniej wiadomości (włącza with_length). Domyślnie: count, a dla month/weekday/hour key." },
+                with_reactions: { type: "boolean", description: "true = dodaj łączną liczbę otrzymanych reakcji (reactions) do sumy i każdej grupy (z filtrem reaction: tylko tego emoji)." },
+                sort: { type: "string", enum: ["count", "key", "length", "reactions"], description: "count = od największej liczby, key = chronologicznie / alfabetycznie, length = od najdłuższej średniej wiadomości (włącza with_length), reactions = od największej liczby reakcji (włącza with_reactions). Domyślnie: count, a dla month/weekday/hour key." },
                 limit: int("Maks. liczba grup (domyślnie 20, maks. 60)."),
             },
             required: [],
@@ -128,7 +134,27 @@ export const buildHistoryTools = (query: HistoryQuery): ToolSpec[] => [
                 sort: asString(a.sort),
                 limit: asInt(a.limit),
                 withLength: a.with_length === true,
+                withReactions: a.with_reactions === true,
             });
+        },
+    },
+    {
+        name: "top_reacted",
+        description:
+            "Zwraca wiadomości, które dostały najwięcej reakcji (emoji pod wiadomością), od najpopularniejszej: 'najbardziej lubiana wiadomość', 'z czego najwięcej się śmialiśmy', 'najwięcej 😂'. " +
+            "Z filtrem reaction układa ranking wg liczby tej jednej reakcji. Każda wiadomość ma pole reactions (emoji → liczba) i reactionCount. Domyślnie tylko wiadomości ludzi, chyba że podano autora albo include_bots=true.",
+        parameters: {
+            type: "object",
+            properties: {
+                ...FILTER_PROPS,
+                limit: int("Maks. liczba wiadomości (domyślnie 5, maks. 20)."),
+                include_bots: { type: "boolean", description: "true = uwzględnij też wiadomości botów, w tym Marvina." },
+            },
+            required: [],
+        },
+        run: raw => {
+            const a = asArgs(raw);
+            return query.topReacted({ ...filtersFrom(a), limit: asInt(a.limit), includeBots: a.include_bots === true });
         },
     },
     {
