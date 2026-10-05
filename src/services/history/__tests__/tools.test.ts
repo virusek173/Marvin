@@ -45,6 +45,20 @@ describe("buildHistoryTools", () => {
         expect(((await tool("get_stats").run(null)) as any).total).toBe(1);
     });
 
+    it("get_stats passes with_length and reply_to_author through", async () => {
+        db.insertLive({
+            id: "2", channelId: "c1", parentId: null, authorId: "u2", authorName: "Madzia", isBot: false,
+            content: "super pomysł", embedsText: "", attachmentsText: "", replyToId: "1", type: 0,
+            isTechnical: false, createdAt: Date.UTC(2025, 2, 10, 11, 5),
+        });
+        const lengths: any = await tool("get_stats").run({ group_by: "author", with_length: true });
+        expect(lengths.groups.find((g: any) => g.key === "Madzia")).toMatchObject({ avgChars: 12, avgWords: 2 });
+        expect(((await tool("get_stats").run({ group_by: "author" })) as any).groups[0]).not.toHaveProperty("avgChars");
+        expect(((await tool("get_stats").run({ author: "Madzia", reply_to_author: "Jacek" })) as any).total).toBe(1);
+        expect(((await tool("get_stats").run({ author: "Jacek", reply_to_author: "Madzia" })) as any).total).toBe(0);
+        expect(((await tool("get_messages").run({ reply_to_author: "Jacek" })) as any).messages).toHaveLength(1);
+    });
+
     it("get_profile returns stored profiles and tolerates junk arguments", async () => {
         db.upsertProfile({ name: "Jacek", summary: "Lubi rowery.", messageCount: 40, lastSeq: 1, updatedAt: Date.UTC(2025, 2, 11, 12, 0) });
         const one: any = await tool("get_profile").run({ person: "Vajrusek" });
@@ -53,8 +67,20 @@ describe("buildHistoryTools", () => {
         expect(((await tool("get_profile").run({ person: 5 })) as any).count).toBe(1);
     });
 
-    it("exposes exactly the seven read-only tools with valid JSON schemas", () => {
-        expect(tools.map(t => t.name).sort()).toEqual(["get_conversation", "get_message_context", "get_messages", "get_profile", "get_stats", "list_channels", "search_messages"]);
+    it("passes emoji, reaction and with_reactions through, and top_reacted ranks messages", async () => {
+        db.setReactions("1", [{ emoji: "😂", count: 3 }]);
+        const grouped: any = await tool("get_stats").run({ group_by: "reaction" });
+        expect(grouped.groups).toEqual([expect.objectContaining({ key: "😂", count: 3 })]);
+        expect(((await tool("get_stats").run({ reaction: "😂" })) as any).total).toBe(1);
+        expect(((await tool("get_stats").run({ emoji: "😂" })) as any).total).toBe(0);
+        expect(((await tool("get_stats").run({ group_by: "author", with_reactions: true })) as any).groups[0]).toMatchObject({ reactions: 3 });
+        const top: any = await tool("top_reacted").run({ reaction: "😂", limit: "x" });
+        expect(top.messages[0]).toMatchObject({ id: "1", reactionCount: 3 });
+        expect(((await tool("top_reacted").run(null)) as any).messages).toHaveLength(1);
+    });
+
+    it("exposes exactly the eight read-only tools with valid JSON schemas", () => {
+        expect(tools.map(t => t.name).sort()).toEqual(["get_conversation", "get_message_context", "get_messages", "get_profile", "get_stats", "list_channels", "search_messages", "top_reacted"]);
         for (const t of tools) expect(t.parameters).toMatchObject({ type: "object" });
     });
 

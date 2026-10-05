@@ -4,6 +4,7 @@ import { cutText, mapGlobalNameNameToRealName } from "../../utils/helpers.js";
 import { formatWarsaw, parseWarsaw, WARSAW_TZ } from "./time.js";
 import { renderBody } from "./context.js";
 import { PhraseCount, PhraseCounter } from "./phrases.js";
+import { emojiKeyFromInput } from "./emoji.js";
 
 export const LIMITS = {
     searchDefault: 10,
@@ -40,6 +41,10 @@ export interface HistoryMessage {
     text: string;
     /** Ready-to-paste Discord markdown link (`[dd.mm.yyyy hh:mm](<url>)`); absent without a server id. */
     cite?: string;
+    /** Reactions the message received (`:name:` or Unicode emoji → count); absent when it has none. */
+    reactions?: Record<string, number>;
+    /** Only in top_reacted: total reactions, or the count of the requested emoji. */
+    reactionCount?: number;
 }
 
 export interface QueryResult {
@@ -50,7 +55,7 @@ export interface QueryResult {
     note?: string;
 }
 
-export const STATS_GROUPS = ["author", "channel", "day", "month", "weekday", "hour"] as const;
+export const STATS_GROUPS = ["author", "channel", "day", "month", "weekday", "hour", "emoji", "reaction"] as const;
 export type StatsGroup = (typeof STATS_GROUPS)[number] | "none";
 
 export interface StatsResult {
@@ -60,7 +65,17 @@ export interface StatsResult {
     groupBy: StatsGroup;
     first?: string;
     last?: string;
-    groups: { key: string; count: number; share: number }[];
+    /** Average length of the non-empty text messages (only with `withLength`): characters, and words counted by spaces (approximate). */
+    avgChars?: number;
+    avgWords?: number;
+    textMessages?: number;
+    /** Total reactions received by the matching messages (only with `withReactions`); with a reaction filter only that emoji. */
+    reactions?: number;
+    /** For group_by emoji / reaction: total number of uses, the base of each group's share (`total` stays the number of messages). */
+    totalUses?: number;
+    /** With an `emoji` filter: how many times the emoji appears in the matching messages (`total` counts messages, one may hold several). */
+    emojiUses?: number;
+    groups: { key: string; count: number; share: number; avgChars?: number; avgWords?: number; textMessages?: number; reactions?: number }[];
     /** True when there were more groups than `limit`. */
     truncated: boolean;
     note?: string;
@@ -86,6 +101,26 @@ export interface ProfilesResult {
     note?: string;
 }
 
+interface LengthSums {
+    n: number;
+    /** Characters, approximate words (spaces + 1) and number of non-empty text messages; image-only messages stay out of the averages. */
+    chars: number;
+    words: number;
+    texts: number;
+    /** Reactions received (only selected with `withReactions`). */
+    rx?: number;
+}
+
+const LENGTH_COLUMNS = `SUM(LENGTH(m.content)) AS chars,
+    SUM(CASE WHEN m.content <> '' THEN LENGTH(m.content) - LENGTH(REPLACE(m.content, ' ', '')) + 1 ELSE 0 END) AS words,
+    SUM(m.content <> '') AS texts`;
+
+const averages = (sum: LengthSums): { avgChars: number; avgWords: number; textMessages: number } => {
+    const texts = sum.texts ?? 0;
+    const round = (value: number) => Math.round(value * 10) / 10;
+    return { avgChars: texts > 0 ? round((sum.chars ?? 0) / texts) : 0, avgWords: texts > 0 ? round((sum.words ?? 0) / texts) : 0, textMessages: texts };
+};
+
 const WEEKDAYS = ["poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota", "niedziela"];
 
 const timeBucket = (ms: number, groupBy: StatsGroup): string => {
@@ -105,6 +140,12 @@ export interface ChannelListing {
 
 export interface QueryFilters {
     author?: string;
+    /** Only messages that are explicit replies to a message written by this person. */
+    replyTo?: string;
+    /** Only messages whose text contains this emoji (Unicode, `:name:` or `<:name:id>`). */
+    emoji?: string;
+    /** Only messages that received this emoji as a reaction. */
+    reaction?: string;
     channel?: string;
     from?: string;
     to?: string;
@@ -328,7 +369,7 @@ export class HistoryQuery {
      * Message counts grouped by author, channel or Warsaw-time bucket. Counts only human messages unless `includeBots`
      * is set (or an author filter is given), and respects the same filters and hidden channels as the other queries.
      */
-    stats(args: QueryFilters & { groupBy?: string; query?: string; includeBots?: boolean; sort?: string; limit?: number }): StatsResult {
+    stats(args: QueryFilters & { groupBy?: string; query?: string; includeBots?: boolean; sort?: string; limit?: number; withLength?: boolean; withReactions?: boolean }): StatsResult {
         const groupBy = (STATS_GROUPS as readonly string[]).includes(args.groupBy ?? "") ? (args.groupBy as StatsGroup) : "none";
         const limit = clamp(args.limit, LIMITS.statsDefault, LIMITS.statsMax);
         const filter = this.filters(args, "m");
@@ -348,32 +389,70 @@ export class HistoryQuery {
         const where = `WHERE 1 = 1 ${match} ${filter.sql}${skipBots}`;
         params.push(...filter.params);
 
-        const totals = this.db.prepare(`SELECT COUNT(*) AS n, MIN(m.created_at) AS first, MAX(m.created_at) AS last FROM ${from} ${where}`).get(...params) as { n: number; first: number | null; last: number | null };
-        const base = { timezone: WARSAW_TZ, total: totals.n, groupBy, ...(totals.n > 0 ? { first: formatWarsaw(totals.first!), last: formatWarsaw(totals.last!) } : null) };
+        const withLength = args.withLength === true || args.sort === "length";
+        const withReactions = args.withReactions === true || args.sort === "reactions";
+        const reactionKey = args.reaction?.trim() ? emojiKeyFromInput(args.reaction) : null;
+        const reactionsSql = `SUM((SELECT COALESCE(SUM(x.n), 0) FROM reactions x WHERE x.message_id = m.id${reactionKey ? " AND x.emoji = ? COLLATE NOCASE" : ""})) AS rx`;
+        const columns = `${LENGTH_COLUMNS}${withReactions ? `, ${reactionsSql}` : ""}`;
+        const columnParams = withReactions && reactionKey ? [reactionKey] : [];
+        const totals = this.db.prepare(`SELECT COUNT(*) AS n, MIN(m.created_at) AS first, MAX(m.created_at) AS last, ${columns} FROM ${from} ${where}`).get(...columnParams, ...params) as LengthSums & { first: number | null; last: number | null };
+        const emojiKey = args.emoji?.trim() ? emojiKeyFromInput(args.emoji) : null;
+        const emojiUses = emojiKey && totals.n > 0 ? (this.db.prepare(`SELECT SUM((SELECT COALESCE(SUM(x.n), 0) FROM message_emoji x WHERE x.message_id = m.id AND x.emoji = ? COLLATE NOCASE)) AS uses FROM ${from} ${where}`).get(emojiKey, ...params) as { uses: number | null }).uses ?? 0 : undefined;
+        const base = {
+            timezone: WARSAW_TZ,
+            total: totals.n,
+            ...(emojiUses !== undefined ? { emojiUses } : null),
+            groupBy,
+            ...(totals.n > 0 ? { first: formatWarsaw(totals.first!), last: formatWarsaw(totals.last!) } : null),
+            ...(withLength && totals.n > 0 ? averages(totals) : null),
+            ...(withReactions && totals.n > 0 ? { reactions: totals.rx ?? 0 } : null),
+        };
         if (groupBy === "none" || totals.n === 0) return { ...base, groups: [], truncated: false };
 
-        const counts = new Map<string, number>();
-        const add = (key: string, n: number) => counts.set(key, (counts.get(key) ?? 0) + n);
+        if (groupBy === "emoji" || groupBy === "reaction") {
+            const table = groupBy === "emoji" ? "message_emoji" : "reactions";
+            const rows = this.db.prepare(`SELECT e.emoji AS key, SUM(e.n) AS uses FROM ${from} JOIN ${table} e ON e.message_id = m.id ${where} GROUP BY e.emoji`).all(...params) as { key: string; uses: number }[];
+            const totalUses = rows.reduce((sum, r) => sum + r.uses, 0);
+            const ranked = rows
+                .map(r => ({ key: r.key, count: r.uses, share: Math.round((r.uses / totalUses) * 1000) / 10 }))
+                .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
+            return { ...base, totalUses, groups: ranked.slice(0, limit), truncated: ranked.length > limit };
+        }
+
+        const sums = new Map<string, LengthSums>();
+        const add = (key: string, row: LengthSums) => {
+            const sum = sums.get(key) ?? { n: 0, chars: 0, words: 0, texts: 0, rx: 0 };
+            sum.rx = (sum.rx ?? 0) + (row.rx ?? 0);
+            sum.n += row.n;
+            sum.chars += row.chars ?? 0;
+            sum.words += row.words ?? 0;
+            sum.texts += row.texts ?? 0;
+            sums.set(key, sum);
+        };
 
         if (groupBy === "author") {
-            const rows = this.db.prepare(`SELECT m.author_id AS id, MAX(m.author_name) AS name, COUNT(*) AS n FROM ${from} ${where} GROUP BY m.author_id`).all(...params) as { id: string; name: string; n: number }[];
-            for (const r of rows) add(r.id === this.selfId ? "Marvin" : mapGlobalNameNameToRealName[r.name], r.n);
+            const rows = this.db.prepare(`SELECT m.author_id AS id, MAX(m.author_name) AS name, COUNT(*) AS n, ${columns} FROM ${from} ${where} GROUP BY m.author_id`).all(...columnParams, ...params) as (LengthSums & { id: string; name: string })[];
+            for (const r of rows) add(r.id === this.selfId ? "Marvin" : mapGlobalNameNameToRealName[r.name], r);
         } else if (groupBy === "channel") {
-            const rows = this.db.prepare(`SELECT m.channel_id AS id, COUNT(*) AS n FROM ${from} ${where} GROUP BY m.channel_id`).all(...params) as { id: string; n: number }[];
+            const rows = this.db.prepare(`SELECT m.channel_id AS id, COUNT(*) AS n, ${columns} FROM ${from} ${where} GROUP BY m.channel_id`).all(...columnParams, ...params) as (LengthSums & { id: string })[];
             const named = this.db.prepare("SELECT c.name, p.name AS parent FROM channels c LEFT JOIN channels p ON p.id = c.parent_id WHERE c.id = ?");
             for (const r of rows) {
                 const c = named.get(r.id) as { name: string | null; parent: string | null } | undefined;
-                add(c?.parent ? `${c.name ?? r.id} (wątek w #${c.parent})` : (c?.name ?? r.id), r.n);
+                add(c?.parent ? `${c.name ?? r.id} (wątek w #${c.parent})` : (c?.name ?? r.id), r);
             }
         } else {
             // Buckets are whole UTC hours (Warsaw offsets are whole hours), then folded into Warsaw-time days/months/etc.
-            const rows = this.db.prepare(`SELECT m.created_at / 3600000 AS h, COUNT(*) AS n FROM ${from} ${where} GROUP BY h`).all(...params) as { h: number; n: number }[];
-            for (const r of rows) add(timeBucket(r.h * 3600000, groupBy), r.n);
+            const rows = this.db.prepare(`SELECT m.created_at / 3600000 AS h, COUNT(*) AS n, ${columns} FROM ${from} ${where} GROUP BY h`).all(...columnParams, ...params) as (LengthSums & { h: number })[];
+            for (const r of rows) add(timeBucket(r.h * 3600000, groupBy), r);
         }
 
-        const sortBy = args.sort === "count" || args.sort === "key" ? args.sort : (["month", "weekday", "hour"].includes(groupBy) ? "key" : "count");
-        let groups = [...counts].map(([key, count]) => ({ key, count, share: Math.round((count / totals.n) * 1000) / 10 }));
-        if (sortBy === "key") {
+        const sortBy = args.sort === "count" || args.sort === "key" || args.sort === "length" || args.sort === "reactions" ? args.sort : (["month", "weekday", "hour"].includes(groupBy) ? "key" : "count");
+        let groups = [...sums].map(([key, sum]) => ({ key, count: sum.n, share: Math.round((sum.n / totals.n) * 1000) / 10, ...(withLength ? averages(sum) : null), ...(withReactions ? { reactions: sum.rx ?? 0 } : null) }));
+        if (sortBy === "reactions") {
+            groups.sort((a, b) => (b.reactions ?? 0) - (a.reactions ?? 0) || b.count - a.count || a.key.localeCompare(b.key));
+        } else if (sortBy === "length") {
+            groups.sort((a, b) => (b.avgChars ?? 0) - (a.avgChars ?? 0) || b.count - a.count || a.key.localeCompare(b.key));
+        } else if (sortBy === "key") {
             groups.sort(groupBy === "weekday" ? (a, b) => WEEKDAYS.indexOf(a.key) - WEEKDAYS.indexOf(b.key) : (a, b) => a.key.localeCompare(b.key));
         } else {
             groups.sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
@@ -381,6 +460,24 @@ export class HistoryQuery {
         const truncated = groups.length > limit;
         groups = groups.slice(0, limit);
         return { ...base, groups, truncated };
+    }
+
+    /** Messages that received the most reactions (humans' messages unless an author or `includeBots` is given); with a `reaction` filter ranked by that emoji only. */
+    topReacted(args: QueryFilters & { limit?: number; includeBots?: boolean }): QueryResult {
+        const limit = clamp(args.limit, 5, 20);
+        const filter = this.filters(args, "m");
+        if (typeof filter === "string") return this.empty(filter);
+        const key = args.reaction?.trim() ? emojiKeyFromInput(args.reaction) : null;
+        const skipBots = !args.includeBots && !args.author?.trim() ? " AND m.is_bot = 0" : "";
+        const rows = this.db
+            .prepare(`SELECT m.*, SUM(r.n) AS rx FROM messages m JOIN reactions r ON r.message_id = m.id
+                WHERE 1 = 1 ${filter.sql}${skipBots}${key ? " AND r.emoji = ? COLLATE NOCASE" : ""}
+                GROUP BY m.id ORDER BY rx DESC, m.created_at DESC LIMIT ?`)
+            .all(...filter.params, ...(key ? [key] : []), limit + 1) as any[];
+        const counts = new Map<string, number>(rows.map(r => [r.id as string, r.rx as number]));
+        const result = this.render(rows, limit);
+        if (result.count === 0) return { ...result, note: "Nie znaleziono wiadomości z reakcjami dla tych filtrów (reakcje są zapisane tylko dla zaimportowanych wiadomości)." };
+        return { ...result, messages: result.messages.map(m => ({ ...m, reactionCount: counts.get(m.id) })) };
     }
 
     /** Most common words and word pairs in human messages matching the filters (links, mentions and filler words ignored). */
@@ -421,6 +518,15 @@ export class HistoryQuery {
             .map(r => ({ id: r.id, name: r.name ?? r.id, ...(r.parent_name ? { parentName: r.parent_name } : {}), messages: r.n }));
     }
 
+    /** Date of the oldest archived message that tools can see (DD.MM.YYYY, Warsaw time), or undefined for an empty archive. */
+    archiveStart(): string | undefined {
+        const hidden = this.excludedClause("m");
+        const row = this.db.prepare(`SELECT MIN(m.created_at) AS first FROM messages m WHERE m.is_technical = 0 ${hidden.sql}`).get(...hidden.params) as { first: number | null };
+        if (row.first === null) return undefined;
+        const [y, mo, d] = formatWarsaw(row.first).split(/[. ]/);
+        return `${d}.${mo}.${y}`;
+    }
+
     private empty(note: string): QueryResult {
         return { timezone: WARSAW_TZ, count: 0, truncated: false, messages: [], note };
     }
@@ -457,6 +563,18 @@ export class HistoryQuery {
             const names = authorNamesFor(f.author);
             parts.push(`${alias}.author_name COLLATE NOCASE IN (${names.map(() => "?").join(",")})`);
             params.push(...names);
+        }
+        if (f.replyTo?.trim()) {
+            const names = authorNamesFor(f.replyTo);
+            parts.push(`EXISTS (SELECT 1 FROM messages r WHERE r.id = ${alias}.reply_to_id AND r.author_name COLLATE NOCASE IN (${names.map(() => "?").join(",")}))`);
+            params.push(...names);
+        }
+        for (const [value, table] of [[f.emoji, "message_emoji"], [f.reaction, "reactions"]] as const) {
+            if (!value?.trim()) continue;
+            const key = emojiKeyFromInput(value);
+            if (!key) return `Nie rozpoznaję emoji "${value}". Podaj emoji (np. 😂) albo nazwę emoji serwera (np. :pepe:).`;
+            parts.push(`EXISTS (SELECT 1 FROM ${table} x WHERE x.message_id = ${alias}.id AND x.emoji = ? COLLATE NOCASE)`);
+            params.push(key);
         }
         if (f.channel?.trim()) {
             const wanted = f.channel.trim().replace(/^#/, "");
@@ -497,6 +615,7 @@ export class HistoryQuery {
         };
 
         const guild = this.guildId?.();
+        const reactions = this.reactionsFor(rows.slice(0, limit).map(r => r.id as string));
         const messages: HistoryMessage[] = [];
         let chars = 0;
         let budgetHit = false;
@@ -511,6 +630,7 @@ export class HistoryQuery {
                 author: r.author_id === this.selfId ? "Marvin" : mapGlobalNameNameToRealName[r.author_name],
                 time,
                 text: clipped,
+                ...(reactions.has(r.id) ? { reactions: reactions.get(r.id) } : null),
                 ...(guild ? { cite: `[${d}.${mo}.${y} ${hm}](<https://discord.com/channels/${guild}/${r.channel_id}/${r.id}>)` } : null),
             };
             const size = JSON.stringify(message).length;
@@ -521,9 +641,18 @@ export class HistoryQuery {
         return { timezone: WARSAW_TZ, count: messages.length, truncated: overLimit || budgetHit, messages };
     }
 
+    private reactionsFor(ids: string[]): Map<string, Record<string, number>> {
+        const result = new Map<string, Record<string, number>>();
+        if (ids.length === 0) return result;
+        const rows = this.db.prepare(`SELECT message_id, emoji, n FROM reactions WHERE message_id IN (${ids.map(() => "?").join(",")}) ORDER BY n DESC, emoji`).all(...ids) as { message_id: string; emoji: string; n: number }[];
+        for (const r of rows) result.set(r.message_id, { ...result.get(r.message_id), [r.emoji]: r.n });
+        return result;
+    }
+
     /** Replaces `<@id>` / `<@!id>` mentions with names and `<#id>` with channel names. */
     private cleanText(text: string): string {
         return text
+            .replace(/<a?:(\w+):\d+>/g, ":$1:")
             .replace(/<@!?(\d+)>/g, (_, id: string) => {
                 if (id === this.selfId) return "@Marvin";
                 const r = this.db.prepare("SELECT author_name FROM messages WHERE author_id = ? LIMIT 1").get(id) as { author_name: string } | undefined;

@@ -25,7 +25,8 @@ import {
     getAuthorProfilePrompt,
     getMonthlyReportSystemPrompt,
     WAKE_UP_MESSAGE_PROMPT,
-    HISTORY_TOOLS_PROMPT
+    HISTORY_TOOLS_PROMPT,
+    getArchiveRangePrompt
 } from "../utils/prompts.js";
 import { CustomEmoji, getEmojiReactionSystemPrompt, isReactable, parseEmojiChoice, shouldRollReaction, isMissingPermission, addReaction } from "../utils/emojiReaction.js";
 import { DECIDER_MODEL_NAME, SHORT_REACTION_MODEL_NAME, SERVER_SUMMARY_MODEL_NAME, PROFILE_MODEL_NAME } from "../utils/consts.js";
@@ -33,7 +34,7 @@ import { extractUrls, scrapeUrl } from "./scraper.js";
 import { MessageArchive, getExcludedChannelIds, HISTORY_DB_FILE } from "./history/archive.js";
 import { HistoryQuery } from "./history/query.js";
 import { buildHistoryTools } from "./history/tools.js";
-import { formatImageDescriptions } from "./history/mapper.js";
+import { formatImageDescriptions, collectReactions } from "./history/mapper.js";
 import { INTERNET_NOTICE, isTechnicalMarvinContent } from "./history/technical.js";
 import { HistoryContext, renderLine } from "./history/context.js";
 import { HistorySync } from "./history/sync.js";
@@ -168,7 +169,25 @@ export class DiscordServce {
             else void this.maybeReactWithEmoji(message);
         });
 
+        for (const event of ["messageReactionAdd", "messageReactionRemove", "messageReactionRemoveEmoji"]) {
+            this.client.on(event, (reaction: any) => void this.refreshReactions(reaction?.message));
+        }
+        this.client.on("messageReactionRemoveAll", (message: any) => void this.refreshReactions(message));
+
         this.client.login(DISCORD_CLIENT_TOKEN);
+    }
+
+    /** Re-reads the reactions of an archived message after someone added or removed one. Messages not in the archive are skipped; the backfill brings their reactions. */
+    private async refreshReactions(message: any): Promise<void> {
+        const db = this.archive.database;
+        if (!db || !message?.id || !db.hasMessage(message.id)) return;
+        try {
+            const full = message.partial ? await message.fetch() : message;
+            const reactions = collectReactions(full);
+            if (reactions) db.setReactions(full.id, reactions);
+        } catch (error: any) {
+            historyLog.warn(`reakcje wiadomości ${message.id} nie zaktualizowane: ${error?.message}`);
+        }
     }
 
     /** Gives the model read-only history tools over a separate readonly connection; without an archive Marvin simply has no tools. */
@@ -260,8 +279,19 @@ export class DiscordServce {
     /** Built per request so the date in the prompt is never stale. */
     getSystemContext(withHistoryTools: boolean = false, authorProfile: string = ''): Message {
         const date = new DateService().getFormattedDate();
-        const prompt = getMarvinMotivationSystemPrompt(date, peopleMap) + (withHistoryTools ? HISTORY_TOOLS_PROMPT : '') + authorProfile;
+        const prompt = getMarvinMotivationSystemPrompt(date, peopleMap) + (withHistoryTools ? HISTORY_TOOLS_PROMPT + this.getArchiveRangePrompt() : '') + authorProfile;
         return MODEL.messageFactory(prompt, 'system');
+    }
+
+    /** Prompt line with the date the archive starts, or '' when unknown (the model is then told to read it from get_stats). */
+    private getArchiveRangePrompt(): string {
+        try {
+            const start = this.historyQuery?.archiveStart();
+            return start ? getArchiveRangePrompt(start) : '';
+        } catch (error: any) {
+            console.log("err (początek archiwum): ", error?.message);
+            return '';
+        }
     }
 
     /** Prompt fragment with the generated profile of the message's author, or '' when there is none (profiles off, not yet generated). */

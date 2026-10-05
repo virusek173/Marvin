@@ -140,6 +140,22 @@ describe("OpenAi.contextInteractWithTools", () => {
         }
     });
 
+    it("retries when the reply is only the bare name or header 'Marvin', but not when text follows", async () => {
+        for (const bad of ["Marvin", "  Marvin:\n", "Marvin (2026.10.05 12:00):"]) {
+            create.mockReset();
+            create.mockResolvedValueOnce(answer(bad)).mockResolvedValueOnce(answer("normalna odpowiedź"));
+            const res = await ai().contextInteractWithTools([{ role: "user", content: "x" }], [search]);
+            expect(res.content).toBe("normalna odpowiedź");
+            expect(create).toHaveBeenCalledTimes(2);
+        }
+
+        create.mockReset();
+        create.mockResolvedValueOnce(answer("Marvin: no cześć"));
+        const ok = await ai().contextInteractWithTools([{ role: "user", content: "x" }], [search]);
+        expect(ok.content).toBe("Marvin: no cześć");
+        expect(create).toHaveBeenCalledTimes(1);
+    });
+
     it("treats an empty reply like a malformed one", async () => {
         create.mockResolvedValueOnce({ output: [], output_text: "  " }).mockResolvedValueOnce(answer("jest"));
         const res = await ai().contextInteractWithTools([{ role: "user", content: "x" }], [search]);
