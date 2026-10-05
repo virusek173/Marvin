@@ -34,7 +34,7 @@ import { MessageArchive, getExcludedChannelIds, HISTORY_DB_FILE } from "./histor
 import { HistoryQuery } from "./history/query.js";
 import { buildHistoryTools } from "./history/tools.js";
 import { formatImageDescriptions } from "./history/mapper.js";
-import { INTERNET_NOTICE, linksNotice, isTechnicalMarvinContent } from "./history/technical.js";
+import { INTERNET_NOTICE, isTechnicalMarvinContent } from "./history/technical.js";
 import { HistoryContext, renderLine } from "./history/context.js";
 import { HistorySync } from "./history/sync.js";
 import { ProfileService } from "./history/profiles.js";
@@ -447,10 +447,6 @@ export class DiscordServce {
             );
             const urls = [...new Set([...currentUrls, ...historyUrls])].slice(0, 5);
             const scrapedParts = (await Promise.all(urls.map(scrapeUrl))).filter(Boolean) as string[];
-            if (scrapedParts.length > 0) {
-                message.reply(linksNotice(scrapedParts.length));
-                message.channel.sendTyping();
-            }
             const scrapedContext: Message[] = scrapedParts.length > 0
                 ? [MODEL.messageFactory(`Zawartość stron z wiadomości użytkownika:\n${scrapedParts.join('\n\n---\n\n')}`)]
                 : [];

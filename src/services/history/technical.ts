@@ -2,7 +2,8 @@ import { IMAGE_LAZY_REPLIES } from "../../utils/prompts.js";
 
 export const ERROR_MESSAGE_PREFIX = "Wywaliłem się...";
 export const INTERNET_NOTICE = "To pytanie mnie przerosło. \nZaglądam do Internetu. 🌐";
-export const linksNotice = (count: number): string => `Zaglądam do ${count > 1 ? "linków" : "linka"}. 🔗`;
+// No longer sent; kept so notices already in the archive are still recognised as technical.
+export const linksNotice =(count: number): string => `Zaglądam do ${count > 1 ? "linków" : "linka"}. 🔗`;
 
 const FIXED_NOTICES = new Set<string>([
     ...IMAGE_LAZY_REPLIES,
