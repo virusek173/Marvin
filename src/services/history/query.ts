@@ -60,7 +60,11 @@ export interface StatsResult {
     groupBy: StatsGroup;
     first?: string;
     last?: string;
-    groups: { key: string; count: number; share: number }[];
+    /** Average length of the non-empty text messages (only with `withLength`): characters, and words counted by spaces (approximate). */
+    avgChars?: number;
+    avgWords?: number;
+    textMessages?: number;
+    groups: { key: string; count: number; share: number; avgChars?: number; avgWords?: number; textMessages?: number }[];
     /** True when there were more groups than `limit`. */
     truncated: boolean;
     note?: string;
@@ -86,6 +90,24 @@ export interface ProfilesResult {
     note?: string;
 }
 
+interface LengthSums {
+    n: number;
+    /** Characters, approximate words (spaces + 1) and number of non-empty text messages; image-only messages stay out of the averages. */
+    chars: number;
+    words: number;
+    texts: number;
+}
+
+const LENGTH_COLUMNS = `SUM(LENGTH(m.content)) AS chars,
+    SUM(CASE WHEN m.content <> '' THEN LENGTH(m.content) - LENGTH(REPLACE(m.content, ' ', '')) + 1 ELSE 0 END) AS words,
+    SUM(m.content <> '') AS texts`;
+
+const averages = (sum: LengthSums): { avgChars: number; avgWords: number; textMessages: number } => {
+    const texts = sum.texts ?? 0;
+    const round = (value: number) => Math.round(value * 10) / 10;
+    return { avgChars: texts > 0 ? round((sum.chars ?? 0) / texts) : 0, avgWords: texts > 0 ? round((sum.words ?? 0) / texts) : 0, textMessages: texts };
+};
+
 const WEEKDAYS = ["poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota", "niedziela"];
 
 const timeBucket = (ms: number, groupBy: StatsGroup): string => {
@@ -105,6 +127,8 @@ export interface ChannelListing {
 
 export interface QueryFilters {
     author?: string;
+    /** Only messages that are explicit replies to a message written by this person. */
+    replyTo?: string;
     channel?: string;
     from?: string;
     to?: string;
@@ -328,7 +352,7 @@ export class HistoryQuery {
      * Message counts grouped by author, channel or Warsaw-time bucket. Counts only human messages unless `includeBots`
      * is set (or an author filter is given), and respects the same filters and hidden channels as the other queries.
      */
-    stats(args: QueryFilters & { groupBy?: string; query?: string; includeBots?: boolean; sort?: string; limit?: number }): StatsResult {
+    stats(args: QueryFilters & { groupBy?: string; query?: string; includeBots?: boolean; sort?: string; limit?: number; withLength?: boolean }): StatsResult {
         const groupBy = (STATS_GROUPS as readonly string[]).includes(args.groupBy ?? "") ? (args.groupBy as StatsGroup) : "none";
         const limit = clamp(args.limit, LIMITS.statsDefault, LIMITS.statsMax);
         const filter = this.filters(args, "m");
@@ -348,32 +372,49 @@ export class HistoryQuery {
         const where = `WHERE 1 = 1 ${match} ${filter.sql}${skipBots}`;
         params.push(...filter.params);
 
-        const totals = this.db.prepare(`SELECT COUNT(*) AS n, MIN(m.created_at) AS first, MAX(m.created_at) AS last FROM ${from} ${where}`).get(...params) as { n: number; first: number | null; last: number | null };
-        const base = { timezone: WARSAW_TZ, total: totals.n, groupBy, ...(totals.n > 0 ? { first: formatWarsaw(totals.first!), last: formatWarsaw(totals.last!) } : null) };
+        const withLength = args.withLength === true || args.sort === "length";
+        const columns = LENGTH_COLUMNS;
+        const totals = this.db.prepare(`SELECT COUNT(*) AS n, MIN(m.created_at) AS first, MAX(m.created_at) AS last, ${columns} FROM ${from} ${where}`).get(...params) as LengthSums & { first: number | null; last: number | null };
+        const base = {
+            timezone: WARSAW_TZ,
+            total: totals.n,
+            groupBy,
+            ...(totals.n > 0 ? { first: formatWarsaw(totals.first!), last: formatWarsaw(totals.last!) } : null),
+            ...(withLength && totals.n > 0 ? averages(totals) : null),
+        };
         if (groupBy === "none" || totals.n === 0) return { ...base, groups: [], truncated: false };
 
-        const counts = new Map<string, number>();
-        const add = (key: string, n: number) => counts.set(key, (counts.get(key) ?? 0) + n);
+        const sums = new Map<string, LengthSums>();
+        const add = (key: string, row: LengthSums) => {
+            const sum = sums.get(key) ?? { n: 0, chars: 0, words: 0, texts: 0 };
+            sum.n += row.n;
+            sum.chars += row.chars ?? 0;
+            sum.words += row.words ?? 0;
+            sum.texts += row.texts ?? 0;
+            sums.set(key, sum);
+        };
 
         if (groupBy === "author") {
-            const rows = this.db.prepare(`SELECT m.author_id AS id, MAX(m.author_name) AS name, COUNT(*) AS n FROM ${from} ${where} GROUP BY m.author_id`).all(...params) as { id: string; name: string; n: number }[];
-            for (const r of rows) add(r.id === this.selfId ? "Marvin" : mapGlobalNameNameToRealName[r.name], r.n);
+            const rows = this.db.prepare(`SELECT m.author_id AS id, MAX(m.author_name) AS name, COUNT(*) AS n, ${columns} FROM ${from} ${where} GROUP BY m.author_id`).all(...params) as (LengthSums & { id: string; name: string })[];
+            for (const r of rows) add(r.id === this.selfId ? "Marvin" : mapGlobalNameNameToRealName[r.name], r);
         } else if (groupBy === "channel") {
-            const rows = this.db.prepare(`SELECT m.channel_id AS id, COUNT(*) AS n FROM ${from} ${where} GROUP BY m.channel_id`).all(...params) as { id: string; n: number }[];
+            const rows = this.db.prepare(`SELECT m.channel_id AS id, COUNT(*) AS n, ${columns} FROM ${from} ${where} GROUP BY m.channel_id`).all(...params) as (LengthSums & { id: string })[];
             const named = this.db.prepare("SELECT c.name, p.name AS parent FROM channels c LEFT JOIN channels p ON p.id = c.parent_id WHERE c.id = ?");
             for (const r of rows) {
                 const c = named.get(r.id) as { name: string | null; parent: string | null } | undefined;
-                add(c?.parent ? `${c.name ?? r.id} (wątek w #${c.parent})` : (c?.name ?? r.id), r.n);
+                add(c?.parent ? `${c.name ?? r.id} (wątek w #${c.parent})` : (c?.name ?? r.id), r);
             }
         } else {
             // Buckets are whole UTC hours (Warsaw offsets are whole hours), then folded into Warsaw-time days/months/etc.
-            const rows = this.db.prepare(`SELECT m.created_at / 3600000 AS h, COUNT(*) AS n FROM ${from} ${where} GROUP BY h`).all(...params) as { h: number; n: number }[];
-            for (const r of rows) add(timeBucket(r.h * 3600000, groupBy), r.n);
+            const rows = this.db.prepare(`SELECT m.created_at / 3600000 AS h, COUNT(*) AS n, ${columns} FROM ${from} ${where} GROUP BY h`).all(...params) as (LengthSums & { h: number })[];
+            for (const r of rows) add(timeBucket(r.h * 3600000, groupBy), r);
         }
 
-        const sortBy = args.sort === "count" || args.sort === "key" ? args.sort : (["month", "weekday", "hour"].includes(groupBy) ? "key" : "count");
-        let groups = [...counts].map(([key, count]) => ({ key, count, share: Math.round((count / totals.n) * 1000) / 10 }));
-        if (sortBy === "key") {
+        const sortBy = args.sort === "count" || args.sort === "key" || args.sort === "length" ? args.sort : (["month", "weekday", "hour"].includes(groupBy) ? "key" : "count");
+        let groups = [...sums].map(([key, sum]) => ({ key, count: sum.n, share: Math.round((sum.n / totals.n) * 1000) / 10, ...(withLength ? averages(sum) : null) }));
+        if (sortBy === "length") {
+            groups.sort((a, b) => (b.avgChars ?? 0) - (a.avgChars ?? 0) || b.count - a.count || a.key.localeCompare(b.key));
+        } else if (sortBy === "key") {
             groups.sort(groupBy === "weekday" ? (a, b) => WEEKDAYS.indexOf(a.key) - WEEKDAYS.indexOf(b.key) : (a, b) => a.key.localeCompare(b.key));
         } else {
             groups.sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
@@ -421,6 +462,15 @@ export class HistoryQuery {
             .map(r => ({ id: r.id, name: r.name ?? r.id, ...(r.parent_name ? { parentName: r.parent_name } : {}), messages: r.n }));
     }
 
+    /** Date of the oldest archived message that tools can see (DD.MM.YYYY, Warsaw time), or undefined for an empty archive. */
+    archiveStart(): string | undefined {
+        const hidden = this.excludedClause("m");
+        const row = this.db.prepare(`SELECT MIN(m.created_at) AS first FROM messages m WHERE m.is_technical = 0 ${hidden.sql}`).get(...hidden.params) as { first: number | null };
+        if (row.first === null) return undefined;
+        const [y, mo, d] = formatWarsaw(row.first).split(/[. ]/);
+        return `${d}.${mo}.${y}`;
+    }
+
     private empty(note: string): QueryResult {
         return { timezone: WARSAW_TZ, count: 0, truncated: false, messages: [], note };
     }
@@ -456,6 +506,11 @@ export class HistoryQuery {
         if (f.author?.trim()) {
             const names = authorNamesFor(f.author);
             parts.push(`${alias}.author_name COLLATE NOCASE IN (${names.map(() => "?").join(",")})`);
+            params.push(...names);
+        }
+        if (f.replyTo?.trim()) {
+            const names = authorNamesFor(f.replyTo);
+            parts.push(`EXISTS (SELECT 1 FROM messages r WHERE r.id = ${alias}.reply_to_id AND r.author_name COLLATE NOCASE IN (${names.map(() => "?").join(",")}))`);
             params.push(...names);
         }
         if (f.channel?.trim()) {

@@ -25,7 +25,8 @@ import {
     getAuthorProfilePrompt,
     getMonthlyReportSystemPrompt,
     WAKE_UP_MESSAGE_PROMPT,
-    HISTORY_TOOLS_PROMPT
+    HISTORY_TOOLS_PROMPT,
+    getArchiveRangePrompt
 } from "../utils/prompts.js";
 import { CustomEmoji, getEmojiReactionSystemPrompt, isReactable, parseEmojiChoice, shouldRollReaction, isMissingPermission, addReaction } from "../utils/emojiReaction.js";
 import { DECIDER_MODEL_NAME, SHORT_REACTION_MODEL_NAME, SERVER_SUMMARY_MODEL_NAME, PROFILE_MODEL_NAME } from "../utils/consts.js";
@@ -260,8 +261,19 @@ export class DiscordServce {
     /** Built per request so the date in the prompt is never stale. */
     getSystemContext(withHistoryTools: boolean = false, authorProfile: string = ''): Message {
         const date = new DateService().getFormattedDate();
-        const prompt = getMarvinMotivationSystemPrompt(date, peopleMap) + (withHistoryTools ? HISTORY_TOOLS_PROMPT : '') + authorProfile;
+        const prompt = getMarvinMotivationSystemPrompt(date, peopleMap) + (withHistoryTools ? HISTORY_TOOLS_PROMPT + this.getArchiveRangePrompt() : '') + authorProfile;
         return MODEL.messageFactory(prompt, 'system');
+    }
+
+    /** Prompt line with the date the archive starts, or '' when unknown (the model is then told to read it from get_stats). */
+    private getArchiveRangePrompt(): string {
+        try {
+            const start = this.historyQuery?.archiveStart();
+            return start ? getArchiveRangePrompt(start) : '';
+        } catch (error: any) {
+            console.log("err (początek archiwum): ", error?.message);
+            return '';
+        }
     }
 
     /** Prompt fragment with the generated profile of the message's author, or '' when there is none (profiles off, not yet generated). */

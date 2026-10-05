@@ -397,6 +397,47 @@ describe("HistoryQuery", () => {
             open(["secret"]);
             expect(q.stats({ groupBy: "channel" }).total).toBe(1);
         });
+
+        it("filters replies by the author of the replied-to message", () => {
+            db.insertLive(row({ id: "m1", authorId: "u1", authorName: "Vajrusek" }));
+            db.insertLive(row({ id: "m2", authorId: "u2", authorName: "Madzia" }));
+            db.insertLive(row({ authorId: "u2", authorName: "Madzia", replyToId: "m1" }));
+            db.insertLive(row({ authorId: "u2", authorName: "Madzia", replyToId: "m1" }));
+            db.insertLive(row({ authorId: "u1", authorName: "Vajrusek", replyToId: "m2" }));
+            db.insertLive(row({ authorId: "u2", authorName: "Madzia", replyToId: "nie-ma" }));
+            expect(q.stats({ author: "Madzia", replyTo: "Jacek" }).total).toBe(2);
+            expect(q.stats({ author: "Jacek", replyTo: "Madzia" }).total).toBe(1);
+            expect(q.stats({ replyTo: "Jacek", groupBy: "author" }).groups.map(g => g.key)).toEqual(["Madzia"]);
+            expect(q.stats({ replyTo: "Nikt" }).total).toBe(0);
+            expect(q.range({ author: "Madzia", replyTo: "Jacek" }).messages).toHaveLength(2);
+        });
+
+        it("adds average message length only with withLength (or sort length), ignoring empty text", () => {
+            db.insertLive(row({ authorId: "u1", authorName: "Vajrusek", content: "ala ma kota" }));
+            db.insertLive(row({ authorId: "u1", authorName: "Vajrusek", content: "ok" }));
+            db.insertLive(row({ authorId: "u1", authorName: "Vajrusek", content: "", attachmentsText: "zdjęcie" }));
+            db.insertLive(row({ authorId: "u2", authorName: "Madzia", content: "a" }));
+
+            expect(q.stats({ groupBy: "author" }).groups[0]).not.toHaveProperty("avgChars");
+
+            const res = q.stats({ groupBy: "author", withLength: true });
+            expect(res).toMatchObject({ total: 4, textMessages: 3, avgChars: 4.7, avgWords: 1.7 });
+            expect(res.groups.find(g => g.key === "Jacek")).toMatchObject({ count: 3, textMessages: 2, avgChars: 6.5, avgWords: 2 });
+
+            const sorted = q.stats({ groupBy: "author", sort: "length" });
+            expect(sorted.groups.map(g => g.key)).toEqual(["Jacek", "Madzia"]);
+            expect(sorted.groups[1]).toMatchObject({ avgChars: 1, avgWords: 1 });
+        });
+
+        it("reports the archive start as a Warsaw date, ignoring technical and excluded messages", () => {
+            expect(q.archiveStart()).toBeUndefined();
+            db.insertLive(row({ createdAt: Date.UTC(2021, 0, 15, 10, 0), channelId: "secret" }));
+            db.insertLive(row({ createdAt: Date.UTC(2021, 0, 10, 10, 0), isTechnical: true }));
+            db.insertLive(row({ createdAt: Date.UTC(2022, 5, 1, 10, 0) }));
+            expect(q.archiveStart()).toBe("15.01.2021");
+            open(["secret"]);
+            expect(q.archiveStart()).toBe("01.06.2022");
+        });
     });
 
     it("lists channels with names, thread parents and counts", () => {

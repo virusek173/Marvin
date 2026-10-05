@@ -45,6 +45,20 @@ describe("buildHistoryTools", () => {
         expect(((await tool("get_stats").run(null)) as any).total).toBe(1);
     });
 
+    it("get_stats passes with_length and reply_to_author through", async () => {
+        db.insertLive({
+            id: "2", channelId: "c1", parentId: null, authorId: "u2", authorName: "Madzia", isBot: false,
+            content: "super pomysł", embedsText: "", attachmentsText: "", replyToId: "1", type: 0,
+            isTechnical: false, createdAt: Date.UTC(2025, 2, 10, 11, 5),
+        });
+        const lengths: any = await tool("get_stats").run({ group_by: "author", with_length: true });
+        expect(lengths.groups.find((g: any) => g.key === "Madzia")).toMatchObject({ avgChars: 12, avgWords: 2 });
+        expect(((await tool("get_stats").run({ group_by: "author" })) as any).groups[0]).not.toHaveProperty("avgChars");
+        expect(((await tool("get_stats").run({ author: "Madzia", reply_to_author: "Jacek" })) as any).total).toBe(1);
+        expect(((await tool("get_stats").run({ author: "Jacek", reply_to_author: "Madzia" })) as any).total).toBe(0);
+        expect(((await tool("get_messages").run({ reply_to_author: "Jacek" })) as any).messages).toHaveLength(1);
+    });
+
     it("get_profile returns stored profiles and tolerates junk arguments", async () => {
         db.upsertProfile({ name: "Jacek", summary: "Lubi rowery.", messageCount: 40, lastSeq: 1, updatedAt: Date.UTC(2025, 2, 11, 12, 0) });
         const one: any = await tool("get_profile").run({ person: "Vajrusek" });

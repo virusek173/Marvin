@@ -6,6 +6,7 @@ const int = (description: string) => ({ type: "integer", description });
 
 const FILTER_PROPS = {
     author: str("Imię autora, np. Jacek, Madzia, Domin (opcjonalnie)."),
+    reply_to_author: str("Tylko wiadomości, które są jawną odpowiedzią (funkcja 'odpowiedz') na wiadomość tej osoby, np. 'ile razy Wiktor odpisał Jackowi' = author Wiktor + reply_to_author Jacek (opcjonalnie)."),
     channel: str("Nazwa kanału bez #, np. ogolny (opcjonalnie)."),
     from: str("Początek zakresu, czas warszawski: YYYY-MM-DD albo YYYY-MM-DDTHH:MM (opcjonalnie)."),
     to: str("Koniec zakresu włącznie, czas warszawski: YYYY-MM-DD albo YYYY-MM-DDTHH:MM (opcjonalnie)."),
@@ -14,6 +15,14 @@ const FILTER_PROPS = {
 const asArgs = (value: unknown): Record<string, any> => (value && typeof value === "object" ? (value as Record<string, any>) : {});
 const asString = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 const asInt = (value: unknown): number | undefined => (typeof value === "number" ? value : undefined);
+
+const filtersFrom = (a: Record<string, any>) => ({
+    author: asString(a.author),
+    replyTo: asString(a.reply_to_author),
+    channel: asString(a.channel),
+    from: asString(a.from),
+    to: asString(a.to),
+});
 
 /** Read-only tools that expose the message archive to the model. They receive only the query layer, never Discord. */
 export const buildHistoryTools = (query: HistoryQuery): ToolSpec[] => [
@@ -37,10 +46,7 @@ export const buildHistoryTools = (query: HistoryQuery): ToolSpec[] => [
             const a = asArgs(raw);
             return query.search({
                 query: asString(a.query) ?? "",
-                author: asString(a.author),
-                channel: asString(a.channel),
-                from: asString(a.from),
-                to: asString(a.to),
+                ...filtersFrom(a),
                 limit: asInt(a.limit),
                 includeBots: a.include_bots === true,
             });
@@ -64,10 +70,7 @@ export const buildHistoryTools = (query: HistoryQuery): ToolSpec[] => [
         run: raw => {
             const a = asArgs(raw);
             return query.range({
-                author: asString(a.author),
-                channel: asString(a.channel),
-                from: asString(a.from),
-                to: asString(a.to),
+                ...filtersFrom(a),
                 limit: asInt(a.limit),
                 newest: a.newest === true,
             });
@@ -98,7 +101,10 @@ export const buildHistoryTools = (query: HistoryQuery): ToolSpec[] => [
         description:
             "Liczy wiadomości w archiwum i grupuje je, np. 'kto ile napisał', 'który dzień był najgłośniejszy', 'ile wiadomości w sierpniu', 'ile razy padło słowo X'. " +
             "Zwraca dokładne liczby z całego archiwum (nie pobieraj wiadomości, żeby je liczyć ręcznie). Liczy tylko wiadomości ludzi, chyba że include_bots=true albo podano autora. " +
-            "Bez group_by zwraca tylko łączną liczbę pasujących wiadomości oraz datę pierwszej i ostatniej.",
+            "Bez group_by zwraca tylko łączną liczbę pasujących wiadomości oraz datę pierwszej i ostatniej (bez filtrów dat to właśnie początek i koniec archiwum — użyj tego przy pytaniach o 'pierwszą wiadomość' i 'od początku'). " +
+            "Z with_length=true dodaje średnią długość wiadomości (znaki i słowa; tylko wiadomości z tekstem), np. 'średnia długość wiadomości Wiktora i Masona' = group_by author, with_length. " +
+            "Z filtrem reply_to_author liczy odpowiedzi jednej osoby na wiadomości drugiej. " +
+            "Z filtrem reply_to_author liczy odpowiedzi jednej osoby na wiadomości drugiej.",
         parameters: {
             type: "object",
             properties: {
@@ -106,7 +112,8 @@ export const buildHistoryTools = (query: HistoryQuery): ToolSpec[] => [
                 query: str("Policz tylko wiadomości zawierające te słowa (dopasowanie po początku słowa, wszystkie podane słowa), np. 'rower'. Opcjonalnie."),
                 ...FILTER_PROPS,
                 include_bots: { type: "boolean", description: "true = wliczaj też wiadomości botów, w tym Marvina (domyślnie pomijane)." },
-                sort: { type: "string", enum: ["count", "key"], description: "count = od największej liczby, key = chronologicznie / alfabetycznie. Domyślnie: count, a dla month/weekday/hour key." },
+                with_length: { type: "boolean", description: "true = dodaj średnią długość wiadomości (avgChars, avgWords, textMessages) do sumy i każdej grupy." },
+                sort: { type: "string", enum: ["count", "key", "length"], description: "count = od największej liczby, key = chronologicznie / alfabetycznie, length = od najdłuższej średniej wiadomości (włącza with_length). Domyślnie: count, a dla month/weekday/hour key." },
                 limit: int("Maks. liczba grup (domyślnie 20, maks. 60)."),
             },
             required: [],
@@ -116,13 +123,11 @@ export const buildHistoryTools = (query: HistoryQuery): ToolSpec[] => [
             return query.stats({
                 groupBy: asString(a.group_by),
                 query: asString(a.query),
-                author: asString(a.author),
-                channel: asString(a.channel),
-                from: asString(a.from),
-                to: asString(a.to),
+                ...filtersFrom(a),
                 includeBots: a.include_bots === true,
                 sort: asString(a.sort),
                 limit: asInt(a.limit),
+                withLength: a.with_length === true,
             });
         },
     },

@@ -33,10 +33,18 @@ export const HISTORY_TOOLS_PROMPT = `
         - Gdy pytanie dotyczy tego, co ustalono, o czym rozmawiano albo jak coś się skończyło ("co wiemy o...", "jak to ustaliliśmy"), a wyszukiwanie zwróciło tylko pojedyncze zdania, weź najtrafniejszą wiadomość i pobierz jej rozmowę przez get_conversation (zamiast zgadywać z fragmentów). Na jedno pytanie wystarczą zwykle 1–2 rozmowy. Zostaw domyślną przerwę (gap_minutes) — zwiększaj ją tylko wtedy, gdy rozmowa wyszła wyraźnie za krótka, bo duża przerwa skleja w jedną rozmowę niezwiązane wątki.
         - Pytanie, na które właśnie odpowiadasz, i wszystko po nim są dla narzędzi niewidoczne (masz je w bieżącym kontekście) — nie szukaj ich w archiwum.
         - Do pytań o liczby i statystyki ("kto ile napisał", "ile wiadomości", "kiedy najwięcej", "ile razy padło X") używaj get_stats — liczy dokładnie w całym archiwum. Nie pobieraj wiadomości, żeby je liczyć. Pamiętaj, że domyślnie liczy tylko ludzi (nie boty); powiedz to, jeśli ma znaczenie. Podaj liczby tak, jak je dostałeś.
+        - Pytania o początek ("pierwsza wiadomość", "od początku", "od kiedy") rozwiązuj danymi, nie zgadywaniem dat: nigdy nie wpisuj w from/to daty, której nie podał użytkownik ani narzędzie. Początek całego archiwum jest podany niżej (jeśli jest) albo zwraca go get_stats bez filtrów dat (pola first i last). Pierwszą wiadomość pobierz przez get_messages bez dat (zwraca najstarsze), z limit=1. Dla jednej osoby lub tematu weź first z get_stats z tym filtrem. Zakres, który podajesz w odpowiedzi, bierz z first/last wyniku, a nie z filtra, który sam wpisałeś.
+        - Liczby o odpowiedziach ("ile razy X odpisał Y") liczysz przez get_stats z author=X i reply_to_author=Y (liczy tylko jawne odpowiedzi "odpowiedz", nie wiadomości, które po prostu następują po sobie). Średnią długość wiadomości daje get_stats z with_length=true (znaki i słowa, bez wiadomości samych z obrazkiem). Nie mów, że archiwum nie ma takich danych, zanim tego nie spróbujesz.
+        - Nie wyciągaj wniosków o związkach, życiu prywatnym ani o faktach z samego współwystępowania imion, oznaczeń (@) czy wspólnych wiadomości. Jeśli żadna wiadomość nie mówi tego wprost, odpowiedz, że w archiwum nie ma na to dowodu — bez podawania "najstarszej wzmianki" jako daty.
         - Do pytań o to, jaka jest dana osoba, co lubi, z czego żartuje ("co lubi Madzia", "jaki jest Wiktor") użyj get_profile. To nieoficjalny, wygenerowany z czatu opis: przedstaw go jako swoje wrażenie z tego, co ludzie piszą, a nie jako pewnik. Jeśli profilu brakuje albo jest ubogi, powiedz to wprost, ewentualnie dopełnij wyszukiwaniem w archiwum.
         - Gdy narzędzie zwróci, że budżet danych jest wyczerpany, nie wołaj już narzędzi — odpowiedz na podstawie tego, co masz, i powiedz, że to tylko część.
         - Pojedyncza wiadomość na Discordzie mieści ok. 1900 znaków. Dłuższą odpowiedź system podzieli na kilka wiadomości, więc nie urywaj jej w pół zdania, tylko wybierz najważniejsze punkty i zakończ całym zdaniem.
         - Odpowiadaj tak jak zawsze: krótko, w swoim stylu.`
+
+/** Appended after HISTORY_TOOLS_PROMPT: where the archive begins, so "from the beginning" never has to be guessed. */
+export const getArchiveRangePrompt = (start: string): string =>
+    `
+        - Archiwum sięga od ${start} (data najstarszej wiadomości). Przed tą datą nie ma w archiwum żadnych danych.`;
 
 /** Appended to the system prompt: what Marvin may know about the person he is answering (see history/profiles.ts). */
 export const getAuthorProfilePrompt = (name: string, profile: string): string =>
