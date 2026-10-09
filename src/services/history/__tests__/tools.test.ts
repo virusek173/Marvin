@@ -91,6 +91,11 @@ describe("buildHistoryTools", () => {
         expect(((await tool("search_messages").run(null)) as any).note).toBeDefined();
     });
 
+    it("search_messages passes sort through", async () => {
+        expect(((await tool("search_messages").run({ query: "urlop", sort: "newest" })) as any).sort).toBe("newest");
+        expect(((await tool("search_messages").run({ query: "urlop", sort: "x" })) as any).sort).toBe("relevance");
+    });
+
     it("get_messages, get_message_context and list_channels work end to end", async () => {
         expect(((await tool("get_messages").run({ from: "2025-03-10", to: "2025-03-10" })) as any).count).toBe(1);
         expect(((await tool("get_message_context").run({ message_id: "1" })) as any).count).toBe(1);

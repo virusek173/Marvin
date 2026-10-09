@@ -55,7 +55,7 @@ export const stripImages = (context: Message[]): Message[] =>
  * at the start of its own reply — this removes it before the text reaches Discord.
  */
 export const stripLeadingTimestampPrefix = (content: string): string =>
-  content.replace(/^\s*(?:\[\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}\]\s*[^\]\n:]+|[^()\n:]{1,40}\(\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}\)):\s*/, "");
+  content.replace(/^\s*(?:\[\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}\]\s*[^\]\n:]+|[^()\n:]{1,40}\(\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}\)|Marvin):\s*/, "");
 
 const TRAILING_CITE = /^(\s*(?:[-*•]|\d+[.)])\s+)?(.*?)\s*(\[\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}\]\(<https?:\/\/[^>\s]+>\))\s*$/;
 const LEADING_CITE = /^\s*(?:(?:[-*•]|\d+[.)])\s+)?\[\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}\]\(</;
