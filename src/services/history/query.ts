@@ -53,7 +53,13 @@ export interface QueryResult {
     truncated: boolean;
     messages: HistoryMessage[];
     note?: string;
+    /** `search` only: how the hits were ordered, how many messages match in total and the time span of the returned ones. */
+    sort?: SearchSort;
+    matches?: number;
+    span?: { oldest: string; newest: string };
 }
+
+export type SearchSort = "relevance" | "newest";
 
 export const STATS_GROUPS = ["author", "channel", "day", "month", "weekday", "hour", "emoji", "reaction"] as const;
 export type StatsGroup = (typeof STATS_GROUPS)[number] | "none";
@@ -244,27 +250,39 @@ export class HistoryQuery {
     }
 
     /** Words must all match; if nothing matches, falls back to any of the words. Bot messages are skipped unless an author is given or `includeBots` is set. */
-    search(args: QueryFilters & { query: string; limit?: number; includeBots?: boolean }): QueryResult {
+    search(args: QueryFilters & { query: string; limit?: number; includeBots?: boolean; sort?: SearchSort }): QueryResult {
         const fts = buildFtsQuery(args.query ?? "");
         if (!fts) return this.empty("Puste zapytanie — podaj co najmniej jedno słowo do wyszukania.");
         const limit = clamp(args.limit, LIMITS.searchDefault, LIMITS.searchMax);
         const filter = this.filters(args, "m");
         if (typeof filter === "string") return this.empty(filter);
         const skipBots = !args.includeBots && !args.author?.trim() ? " AND m.is_bot = 0" : "";
+        const sort: SearchSort = args.sort === "newest" ? "newest" : "relevance";
+        const order = sort === "newest" ? "m.created_at DESC, CAST(m.id AS INTEGER) DESC" : "bm25(messages_fts), m.created_at DESC";
+        const where = `messages_fts MATCH ? ${filter.sql}${skipBots}`;
         const run = (match: string) => this.db
-            .prepare(`SELECT m.* FROM messages_fts f JOIN messages m ON m.seq = f.rowid
-                WHERE messages_fts MATCH ? ${filter.sql}${skipBots}
-                ORDER BY bm25(messages_fts), m.created_at DESC LIMIT ?`)
+            .prepare(`SELECT m.* FROM messages_fts f JOIN messages m ON m.seq = f.rowid WHERE ${where} ORDER BY ${order} LIMIT ?`)
             .all(match, ...filter.params, limit + 1) as any[];
+        const countAll = (match: string) => (this.db
+            .prepare(`SELECT COUNT(*) AS c FROM messages_fts f JOIN messages m ON m.seq = f.rowid WHERE ${where}`)
+            .get(match, ...filter.params) as { c: number }).c;
         const terms = searchTokens(args.query);
-        let rows = run(fts);
+        let match = fts;
+        let rows = run(match);
         let note: string | undefined;
         if (rows.length === 0 && terms.length > 1) {
-            rows = run(buildFtsQuery(args.query, "OR")!);
+            match = buildFtsQuery(args.query, "OR")!;
+            rows = run(match);
             if (rows.length > 0) note = "Żadna wiadomość nie zawiera wszystkich słów naraz — pokazuję wiadomości z którymkolwiek ze słów, najlepiej dopasowane najpierw.";
         }
         const result = this.render(rows, limit, terms);
-        return note ? { ...result, note } : result;
+        const matches = rows.length > limit ? countAll(match) : rows.length;
+        const times = rows.slice(0, result.count).map(r => r.created_at as number);
+        const span = times.length > 0 ? { oldest: formatWarsaw(Math.min(...times)), newest: formatWarsaw(Math.max(...times)) } : undefined;
+        if (sort === "relevance" && matches > result.count) {
+            note = `${note ? note + " " : ""}Wyniki są wg trafności, a nie wg daty (${result.count} z ${matches} pasujących). Pytanie o 'ostatnie/obecne/teraz' wymaga sort=newest albo zakresu dat.`;
+        }
+        return { ...result, ...(note ? { note } : null), sort, matches, ...(span ? { span } : null) };
     }
 
     /** Messages in a time range (Warsaw time), shown oldest first; when the range holds more than `limit`: the earliest ones, or with `newest` the latest ones. */
@@ -282,6 +300,15 @@ export class HistoryQuery {
             // Older messages beyond the limit are expected here; flag only a cut caused by the size budget.
             result.truncated = result.count < Math.min(rows.length, limit);
             result.messages.reverse();
+        } else if (rows.length > limit && result.count > 0) {
+            const total = (this.db.prepare(`SELECT COUNT(*) AS c FROM messages m WHERE 1 = 1 ${filter.sql}`).get(...filter.params) as { c: number }).c;
+            const last = (rows as any[])[result.count - 1].created_at as number;
+            return {
+                ...result,
+                matches: total,
+                span: { oldest: formatWarsaw((rows as any[])[0].created_at), newest: formatWarsaw(last) },
+                note: `Zakres zawiera ${total} wiadomości, a pokazano tylko najwcześniejsze ${result.count} (do ${formatWarsaw(last)}). Reszta jest później i jej nie widzisz: zawęź from/to (z godziną, YYYY-MM-DDTHH:MM) albo kanał, żeby ją zobaczyć, i nie wyciągaj wniosków o końcu tego zakresu.`,
+            };
         }
         return result;
     }

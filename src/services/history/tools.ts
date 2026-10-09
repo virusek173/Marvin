@@ -35,7 +35,8 @@ export const buildHistoryTools = (query: HistoryQuery): ToolSpec[] => [
         description:
             "Szuka w archiwum wiadomości serwera Discord po słowach (wszystkie podane słowa muszą wystąpić; dopasowanie po początku słowa, " +
             "więc podawaj rdzenie bez końcówek, np. 'kurtk'; gdy żadna wiadomość nie ma wszystkich słów, dostajesz te z którymkolwiek z nich). " +
-            "Wiadomości botów (w tym Twoje własne) są pomijane, chyba że podasz autora albo include_bots=true. Wyniki posortowane wg trafności. Zwraca id, kanał, autora, czas i treść.",
+            "Wiadomości botów (w tym Twoje własne) są pomijane, chyba że podasz autora albo include_bots=true. Domyślnie wyniki są wg trafności (sort=relevance), więc NIE są ułożone wg daty: przy pytaniach o to, co ostatnie, obecne, 'teraz', 'ostatnio', 'z ostatnich dni' ustaw sort=newest (najnowsze najpierw) albo zawęź from/to. " +
+            "Odpowiedź zawiera matches (ile wiadomości pasuje łącznie) i span (zakres dat zwróconych). Zwraca id, kanał, autora, czas i treść.",
         parameters: {
             type: "object",
             properties: {
@@ -43,6 +44,7 @@ export const buildHistoryTools = (query: HistoryQuery): ToolSpec[] => [
                 ...FILTER_PROPS,
                 limit: int("Maks. liczba wyników (domyślnie 10, maks. 25)."),
                 include_bots: { type: "boolean", description: "true = szukaj też w wiadomościach botów, w tym Marvina (domyślnie pomijane)." },
+                sort: { type: "string", enum: ["relevance", "newest"], description: "relevance (domyślnie) = wg trafności; newest = od najnowszych. Dla pytań o ostatnie/obecne użyj newest." },
             },
             required: ["query"],
         },
@@ -53,6 +55,7 @@ export const buildHistoryTools = (query: HistoryQuery): ToolSpec[] => [
                 ...filtersFrom(a),
                 limit: asInt(a.limit),
                 includeBots: a.include_bots === true,
+                sort: a.sort === "newest" ? "newest" : "relevance",
             });
         },
     },

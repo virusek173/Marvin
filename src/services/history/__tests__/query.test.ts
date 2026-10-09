@@ -81,6 +81,27 @@ describe("HistoryQuery", () => {
             expect(q.search({ query: "kurtk" }).count).toBe(1);
         });
 
+        it("sorts by relevance by default and says so; sort=newest returns the latest hits first with matches and span", () => {
+            db.insertLive(row({ content: "chory", createdAt: BASE }));
+            for (let i = 0; i < 3; i++) db.insertLive(row({ content: "chory chory chory", createdAt: BASE + (i + 1) * 3_600_000 }));
+            db.insertLive(row({ content: "Ja czuję się lepiej, ale nadal jestem chory i kaszlę, bo od tygodnia leżę w domu pod kocem", createdAt: BASE + 30 * 3_600_000 }));
+
+            const relevance = q.search({ query: "chor", limit: 2 });
+            expect(relevance).toMatchObject({ sort: "relevance", matches: 5, count: 2 });
+            expect(relevance.note).toMatch(/wg trafności/);
+            expect(relevance.messages.map(m => m.time)).not.toContain(formatWarsaw(BASE + 30 * 3_600_000));
+
+            const newest = q.search({ query: "chor", limit: 2, sort: "newest" });
+            expect(newest).toMatchObject({ sort: "newest", matches: 5, count: 2 });
+            expect(newest.messages[0].time).toBe(formatWarsaw(BASE + 30 * 3_600_000));
+            expect(newest.span).toEqual({ oldest: formatWarsaw(BASE + 3 * 3_600_000), newest: formatWarsaw(BASE + 30 * 3_600_000) });
+            expect(newest.note).toBeUndefined();
+
+            const all = q.search({ query: "chor", limit: 25 });
+            expect(all.note).toBeUndefined();
+            expect(all.matches).toBe(5);
+        });
+
         it("adds a ready-to-paste citation to each message only when the server id is known", () => {
             db.insertLive(row({ id: "777", content: "link test", channelId: "c1", createdAt: BASE }));
             expect(q.search({ query: "link" }).messages[0].cite).toBeUndefined();
@@ -194,6 +215,16 @@ describe("HistoryQuery", () => {
             expect(q.range({ limit: 3 }).messages.map(m => m.text)).toEqual(["m1", "m2", "m3"]);
             expect(q.range({ limit: 3 }).truncated).toBe(true);
             expect(q.range({ limit: 50, newest: true }).truncated).toBe(false);
+        });
+
+        it("says how much of an oversized range is missing and where the shown part ends (earliest-first)", () => {
+            for (let i = 1; i <= 5; i++) db.insertLive(row({ content: `r${i}`, createdAt: BASE + i * 3_600_000 }));
+            const res = q.range({ limit: 3 });
+            expect(res).toMatchObject({ count: 3, truncated: true, matches: 5 });
+            expect(res.span).toEqual({ oldest: formatWarsaw(BASE + 1 * 3_600_000), newest: formatWarsaw(BASE + 3 * 3_600_000) });
+            expect(res.note).toMatch(/5 wiadomości.*najwcześniejsze 3/);
+            expect(q.range({ limit: 5 }).note).toBeUndefined();
+            expect(q.range({ limit: 3, newest: true }).note).toBeUndefined();
         });
 
         it("keeps the whole serialized result (metadata and links included) within the budget", () => {

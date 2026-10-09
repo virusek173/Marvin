@@ -175,7 +175,7 @@ describe("OpenAi.contextInteractWithTools", () => {
     });
 
     it("stops running tools once the total output budget for a question is spent", async () => {
-        const chunk: ToolSpec = { ...search, name: "chunk", run: jest.fn(() => ({ text: "a".repeat(15000) })) };
+        const chunk: ToolSpec = { ...search, name: "chunk", run: jest.fn(() => ({ text: "a".repeat(25000) })) };
         create
             .mockResolvedValueOnce(toolRequest(call("a", "chunk", {}), call("b", "chunk", {}), call("c", "chunk", {})))
             .mockResolvedValueOnce(answer("ok"));

@@ -33,7 +33,7 @@ export interface ToolLoopOptions {
 }
 
 const MAX_TOOL_RESULT_CHARS = 60000;
-const MAX_TOTAL_TOOL_CHARS = 30000;
+const MAX_TOTAL_TOOL_CHARS = 50000;
 const MAX_MALFORMED_RETRIES = 4;
 const TOOL_REASONING_EFFORT = "low";
 const TOOL_MAX_OUTPUT_TOKENS = 4000;

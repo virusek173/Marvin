@@ -4,6 +4,8 @@ describe('stripLeadingTimestampPrefix', () => {
     it('removes an echoed context prefix in the new and the old format', () => {
         expect(stripLeadingTimestampPrefix('Marvin (2026.10.03 12:17): Nic.')).toBe('Nic.');
         expect(stripLeadingTimestampPrefix('[2026.10.03 12:17] Marvin: Nic.')).toBe('Nic.');
+        expect(stripLeadingTimestampPrefix('Marvin: Bo tak.')).toBe('Bo tak.');
+        expect(stripLeadingTimestampPrefix('Marvinowi: tak')).toBe('Marvinowi: tak');
     });
 
     it('leaves ordinary replies alone', () => {
