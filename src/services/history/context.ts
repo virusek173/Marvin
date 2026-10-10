@@ -49,7 +49,11 @@ export class HistoryContext {
                 historyLog.error(`wiadomość ${currentMessageId} nie ma w bazie (kanał ${channelId}) — kontekst z pamięci`);
                 return this.fallback.getContext(channelId);
             }
-            return this.db.getRecentForContext(channelId, this.limit).map(m => toContextMessage(m, this.selfId));
+            const recent = this.db.getRecentForContext(channelId, this.limit);
+            // The thread's own starter message is empty (a system message); the real first message sits in the parent channel.
+            // Prepended only when the window reaches the start of the thread, so it is never shown ahead of a gap.
+            const starter = parentId && recent.length < this.limit ? this.db.getThreadStarter(channelId, parentId) : null;
+            return (starter ? [starter, ...recent] : recent).map(m => toContextMessage(m, this.selfId));
         } catch (error: any) {
             historyLog.error(`odczyt kontekstu kanału ${channelId} nie powiódł się — kontekst z pamięci`, error);
             return this.fallback.getContext(channelId);

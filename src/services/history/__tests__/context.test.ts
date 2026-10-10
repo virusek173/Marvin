@@ -93,6 +93,35 @@ describe("HistoryContext", () => {
         fallback.pushWithLimit({ role: "user", content: "from memory" }, "c1");
         expect(new HistoryContext(null, fallback, [], MARVIN).getContext("c1")).toEqual([{ role: "user", content: "from memory" }]);
     });
+
+    describe("thread starter", () => {
+        const setup = () => {
+            db.insertLive(row({ id: "900", channelId: "parent", content: "Grecja dużo światła", createdAt: 1_700_000_000_000 }));
+            db.insertLive(row({ id: "901", channelId: "900", parentId: "parent", content: "", type: 21, createdAt: 1_700_000_001_000 }));
+            db.insertLive(row({ id: "902", channelId: "900", parentId: "parent", content: "o czym mówi Jacek?", createdAt: 1_700_000_002_000 }));
+        };
+
+        it("puts the parent-channel message the thread was started from first", () => {
+            setup();
+            const ctx = make().getContext("900", "parent");
+            expect(ctx.map(m => m.content)).toEqual([
+                expect.stringContaining("Grecja dużo światła"),
+                expect.stringContaining("o czym mówi Jacek?"),
+            ]);
+        });
+
+        it("does not add it when the window is full, so it never precedes a gap", () => {
+            setup();
+            const ctx = make([], 1).getContext("900", "parent");
+            expect(ctx).toHaveLength(1);
+            expect(ctx[0].content).toContain("o czym mówi Jacek?");
+        });
+
+        it("adds nothing for a regular channel", () => {
+            setup();
+            expect(make().getContext("parent")).toHaveLength(1);
+        });
+    });
 });
 
 describe("HistoryDb.getSince", () => {

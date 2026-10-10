@@ -308,6 +308,15 @@ export class HistoryDb {
         return !!this.db.prepare("SELECT 1 FROM messages WHERE id = ?").get(id);
     }
 
+    /** The message a thread was started from: it lives in the parent channel and shares its id with the thread. */
+    getThreadStarter(threadId: string, parentId: string): StoredMessage | null {
+        const row = this.db
+            .prepare(`SELECT ${STORED_COLUMNS} FROM messages
+                WHERE id = ? AND channel_id = ? AND is_technical = 0 AND ${HAS_TEXT}`)
+            .get(threadId, parentId);
+        return row ? toStored(row) : null;
+    }
+
     /** Newest `limit` non-technical messages of a channel, oldest first. */
     getRecentForContext(channelId: string, limit: number): StoredMessage[] {
         const rows = this.db
