@@ -14,7 +14,6 @@ import { Message, OpenAi, ToolSpec } from "../services/openai.js";
 import { DateService } from "./date.js";
 import { ClientService } from "./client.js";
 import { ContextService } from "./context.js";
-import { Grok } from "./grok.js";
 import {
     IMAGE_LAZY_REPLIES,
     getServerSummarySystemPrompt,
@@ -78,7 +77,6 @@ const peopleMap = {
 
 const EXCLUDED_CHANNEL_IDS = getExcludedChannelIds();
 const openai = new OpenAi();
-const grok = new Grok();
 const MODEL = openai;
 const botExchangeCounters = new Map<string, number>();
 const BOT_EXCHANGE_LIMIT = 2;

@@ -9,7 +9,6 @@ src/
 │   ├── discord.ts         Bot logic: message routing, event handlers
 │   ├── context.ts         In-memory FIFO context (fallback only, see "Message Archive")
 │   ├── openai.ts          OpenAI API wrapper (tool-calling loop with web search, image description)
-│   ├── grok.ts            Grok/X.ai API wrapper (alternative model)
 │   ├── usage.ts           Token usage per day / call kind / model → data/usage.json
 │   ├── webTools.ts        fetch_url tool: page text for the model (scraper.ts: partial download, SSRF guard)
 │   ├── client.ts          Discord.js client factory
@@ -171,7 +170,6 @@ interface Message {
 |---|---|---|---|
 | `OpenAi` (MODEL) | Main responses (history tools + web search), wake-up message, summaries, profiles | `DEFAULT_MODEL_NAME` etc. in `consts.ts` | Yes (hosted `web_search` tool) |
 | `OpenAi` (cheap) | Image description (`VISION_MODEL_NAME`), emoji pick (`SHORT_REACTION_MODEL_NAME`) | `gpt-5.4-mini` / `gpt-5.4-nano` | No |
-| `Grok` | Alternative (unused in current routing) | — | No |
 
 ## Key Design Decisions
 
@@ -183,7 +181,7 @@ interface Message {
 
 4. **Tools get the query layer, never Discord**: history tools wrap `HistoryQuery` (readonly connection, parameterized SQL, hard limits, excluded channels filtered). Tool results are data to quote, not instructions. Each result message carries a short `cite` token (`{c3}`, `history/cites.ts`) that the model pastes verbatim and `HistoryQuery.expandCites` turns into the markdown jump link in the final reply, because hand-built links with 19-digit ids get corrupted and the full links were resent in every round; long messages are clipped around the search hit, `search_messages` skips bot messages by default (unless an author or `include_bots` is given) and falls back from "all words" to "any word" with a note, and `get_messages` can return the newest N messages (`newest=true`; `truncated` then only flags a cut caused by the size budget, not the existence of older messages). Tools are built per mention over `HistoryQuery.scoped(message.id)`, which adds `CAST(id AS INTEGER) < cutoff` to every query (via `excludedClause` / `cutoffSql`), so the question itself and newer messages are invisible to the model. `get_conversation` (`HistoryQuery.conversation`) expands a hit into its conversation by walking back and forward in the same channel while consecutive non-technical messages are at most `gap_minutes` apart (default 30, max 240; scan capped at 300 messages per side; window of `limit` around the hit when longer). `get_stats` answers counting questions with SQL aggregates computed in `HistoryQuery.stats` (group by author/channel, or by Warsaw-time day/month/weekday/hour via UTC-hour buckets folded in JS; optional FTS phrase; humans only unless `include_bots` or an author filter) — a fixed set of parameters instead of model-written SQL, so hidden channels and bot/technical filtering always apply. The same filters accept `reply_to_author` (an `EXISTS` on `reply_to_id` → the replied-to message's author, so "how many times X replied to Y" counts explicit replies only), and `with_length` (or `sort=length`) adds average message length (`avgChars`, `avgWords` ≈ spaces+1, over messages with text only) to the total and every group. Without date filters the unrouped total's `first`/`last` is the archive range, and `HistoryQuery.archiveStart()` (earliest non-technical, non-excluded message, DD.MM.YYYY Warsaw) is appended to the system prompt (`getArchiveRangePrompt`) so the model does not guess where the archive begins. Emoji questions: `group_by=emoji` (uses in text) / `group_by=reaction` (reactions received) with `totalUses` for the share, filters `emoji` (in text) and `reaction` (received, both as `EXISTS` on the new tables, accepting `😂`, `:pepe:`, `pepe`, `<:pepe:id>`), `with_reactions` / `sort=reactions` (summed reactions per group), and the `top_reacted` tool (`HistoryQuery.topReacted`: most reacted messages, or most of one reaction, humans only by default). Every rendered message carries `reactions` when it has any, and `<:name:id>` is shown as `:name:`. The result budget counts the serialized size of each message (`LIMITS.totalChars` = 45000); `openai.ts` replaces any tool output above `MAX_TOOL_RESULT_CHARS` (60000) with an error, so the two must stay consistent. In summaries of many messages the prompt asks for a `cite` link only on points about one concrete message, placed first in the point (and `moveCitesToLineStart` enforces this in code for replies to mentions). The scraper skips Discord message links so Marvin's own citations are not fetched as web pages.
 
-5. **`MODEL` constant**: In `discord.ts`, `MODEL = openai` is a module-level constant. Swap it to `grok` to change the main responder without touching logic.
+5. **`MODEL` constant**: In `discord.ts`, `MODEL = openai` is a module-level constant; OpenAI is the only provider.
 
 ## Staging
 
