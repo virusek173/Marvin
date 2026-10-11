@@ -35,6 +35,8 @@ export interface ToolLoopOptions {
     webSearch?: boolean;
     /** Label for the usage statistics. */
     kind?: string;
+    /** Name of a function tool the model must call in its first round (e.g. when the message contains a link to read). */
+    requireTool?: string;
 }
 
 const WEB_SEARCH_TOOL = {
@@ -144,7 +146,7 @@ export class OpenAi {
      * results are fed back and the model is asked again. After `maxRounds` rounds it must answer without tools.
      */
     async contextInteractWithTools(context: Array<Message>, tools: ToolSpec[], options: ToolLoopOptions = {}): Promise<any> {
-        const { model = DEFAULT_MODEL_NAME, maxRounds = 5, onRound, webSearch = false, kind = "question" } = options;
+        const { model = DEFAULT_MODEL_NAME, maxRounds = 5, onRound, webSearch = false, kind = "question", requireTool } = options;
         const byName = new Map(tools.map(t => [t.name, t]));
         // gpt-5.6 does not accept function tools together with reasoning on /chat/completions, so this loop uses /responses
         const apiTools: any[] = tools.map(t => ({
@@ -173,7 +175,7 @@ export class OpenAi {
                     model,
                     input,
                     tools: apiTools,
-                    tool_choice: forceText ? "none" : "auto",
+                    tool_choice: forceText ? "none" : round === 0 && requireTool && byName.has(requireTool) ? { type: "function", name: requireTool } : "auto",
                     reasoning: { effort: TOOL_REASONING_EFFORT },
                     max_output_tokens: TOOL_MAX_OUTPUT_TOKENS,
                 });
