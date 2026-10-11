@@ -69,6 +69,10 @@ export const moveCitesToLineStart = (text: string): string =>
     return `${m[1] ?? ""}${m[3]} ${m[2].trim()}`;
   }).join("\n");
 
+/** Web search appends sources as "([domain](https://long-url?utm_source=openai))"; keeps just the domain so replies stay short and Discord does not unfurl links. */
+export const shortenWebCitations = (text: string): string =>
+  text.replace(/\s*\(\[([^\]\n]+)\]\(https?:\/\/[^)\s]+\)\)/g, " ($1)");
+
 /** Splits a long reply into Discord-sized parts, preferring paragraph, line, then word boundaries; the last part is cut if `maxParts` is exceeded. */
 export const splitForDiscord = (text: string, maxLength = 1950, maxParts = 4): string[] => {
   const parts: string[] = [];

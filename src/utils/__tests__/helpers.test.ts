@@ -1,4 +1,4 @@
-import { pushWithLimit, parseContextTimestamp, splitForDiscord, moveCitesToLineStart, stripLeadingTimestampPrefix } from '../helpers';
+import { pushWithLimit, parseContextTimestamp, splitForDiscord, moveCitesToLineStart, stripLeadingTimestampPrefix, shortenWebCitations } from '../helpers';
 
 describe('stripLeadingTimestampPrefix', () => {
     it('removes an echoed context prefix in the new and the old format', () => {
@@ -33,6 +33,15 @@ describe('moveCitesToLineStart', () => {
     it('does not touch links in the middle of a sentence', () => {
         const mid = `- Zobacz ${link} i dalej tekst`;
         expect(moveCitesToLineStart(mid)).toBe(mid);
+    });
+});
+
+describe('shortenWebCitations', () => {
+    it('reduces web source links to the domain and leaves other text and message links alone', () => {
+        expect(shortenWebCitations('Pada. ([tvp.info](https://www.tvp.info/1?utm_source=openai))  \nDalej ([wp.pl](http://wp.pl/a))')).toBe('Pada. (tvp.info)  \nDalej (wp.pl)');
+        const cite = '- [01.10.2026 22:02](<https://discord.com/channels/1/2/3>) Jack';
+        expect(shortenWebCitations(cite)).toBe(cite);
+        expect(shortenWebCitations('Zwykły [link](https://x.pl) w tekście')).toBe('Zwykły [link](https://x.pl) w tekście');
     });
 });
 

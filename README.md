@@ -25,9 +25,9 @@ src/
 │   ├── discord.ts         Bot logic — message handling and AI routing
 │   ├── context.ts         In-memory FIFO context (fallback only)
 │   ├── history/           SQLite message archive: live write, backfill, context, read-only search tools, profiles, monthly report
-│   ├── openai.ts          OpenAI API wrapper (primary AI + decider)
+│   ├── openai.ts          OpenAI API wrapper (primary AI, tool loop, web search)
 │   ├── grok.ts            Grok/X.ai API wrapper
-│   ├── perplexity.ts      Perplexity API wrapper (real-time web search)
+│   ├── usage.ts           Token usage statistics (data/usage.json)
 │   ├── client.ts          Discord.js client factory
 │   └── date.ts            Date formatting
 └── utils/
@@ -40,7 +40,7 @@ src/
 ## How It Works
 
 1. **Every `SERVER_SUMMARY_INTERVAL_DAYS` days (default 3) at 20:00 (Warsaw)** — Marvin posts a digest of recent server activity to the bots channel
-2. **When mentioned** (`@Marvin` or reply) — Marvin reads the conversation context, decides whether the question needs internet access (Perplexity) or can be answered from knowledge (OpenAI/Grok), and replies accordingly
+2. **When mentioned** (`@Marvin` or reply) — Marvin reads the conversation context and answers; the model itself decides whether to search the web (OpenAI's hosted web search) or the message archive, or to just answer from knowledge
 3. **All messages** — archived in a local SQLite database (`data/history.db`); the last 30 messages of a channel are the conversation context
 4. **History questions** ("what did Jacek write about the holiday?", "who wrote the most?", "what does Madzia like?") — Marvin uses read-only tools over the archive: full-text search, time ranges, surrounding messages and whole conversations, exact statistics (counts by author, channel, day, hour...) and generated person profiles. Set `HISTORY_SYNC_ENABLED=true` to import the whole server history; the bot role must not have Manage Messages, Manage Channels, Manage Threads, Kick, Ban or Administrator
 5. **Person profiles** (opt-in, `PROFILES_ENABLED=true`) — short descriptions of each regular participant (and the other bots), generated from their archived messages and refreshed when they are a week old and enough new messages arrived. Marvin also uses the profile of the person he is answering to fit his reply, and can look up anyone's profile on request
@@ -60,7 +60,7 @@ Copy `.env.example` to `.env`. Optional switches (all off unless set to `true`):
 1. Create `src/services/newai.ts` with `interact()` and `contextInteract()` methods (follow `openai.ts` pattern)
 2. Add your API key to `.env` and `.env.example`
 3. Import and instantiate the service in `discord.ts`
-4. Add routing logic — either change the `MODEL` constant or add a new branch in the decider flow
+4. Add routing logic — either change the `MODEL` constant or add a new branch in `messageCreate`
 
 ## Scripts
 

@@ -5,14 +5,17 @@ import { formatWarsaw, parseWarsaw, WARSAW_TZ } from "./time.js";
 import { renderBody } from "./context.js";
 import { PhraseCount, PhraseCounter } from "./phrases.js";
 import { emojiKeyFromInput } from "./emoji.js";
+import { CiteRegistry } from "./cites.js";
 
 export const LIMITS = {
     searchDefault: 10,
     searchMax: 25,
-    rangeDefault: 50,
+    rangeDefault: 30,
     rangeMax: 100,
     aroundMax: 15,
     textChars: 500,
+    /** Messages read in bulk (ranges, neighbours, conversations) are clipped harder than search hits. */
+    rangeTextChars: 300,
     totalChars: 45000,
     queryTokens: 8,
     statsDefault: 20,
@@ -39,7 +42,7 @@ export interface HistoryMessage {
     author: string;
     time: string;
     text: string;
-    /** Ready-to-paste Discord markdown link (`[dd.mm.yyyy hh:mm](<url>)`); absent without a server id. */
+    /** Short token (`{c3}`) the model pastes into its reply; `expandCites` turns it into `[dd.mm.yyyy hh:mm](<url>)`. Absent without a server id. */
     cite?: string;
     /** Reactions the message received (`:name:` or Unicode emoji → count); absent when it has none. */
     reactions?: Record<string, number>;
@@ -203,16 +206,16 @@ const foldSameLength = (text: string): string =>
     Array.from(text, c => (c.normalize("NFD").replace(/\p{M}/gu, "")[0] ?? c).toLowerCase().replace("ł", "l")[0] ?? c).join("");
 
 /** Shortens a message to `textChars`; when `terms` are given and the first hit lies beyond the beginning, keeps the hit visible. */
-const clip = (text: string, terms: string[]): string => {
-    if (text.length <= LIMITS.textChars) return text;
+const clip = (text: string, terms: string[], maxChars: number = LIMITS.textChars): string => {
+    if (text.length <= maxChars) return text;
     const folded = foldSameLength(text);
     const hits = terms.map(t => folded.indexOf(foldSameLength(t))).filter(i => i >= 0);
     const first = hits.length ? Math.min(...hits) : 0;
-    if (first < LIMITS.textChars - 80) return `${cutText(text, LIMITS.textChars)}…`;
+    if (first < maxChars - 80) return `${cutText(text, maxChars)}…`;
     let start = Math.max(0, first - 150);
     if (/[\uDC00-\uDFFF]/.test(text[start] ?? "")) start++;
-    const end = start + LIMITS.textChars;
-    return `…${cutText(text.substring(start), LIMITS.textChars)}${end < text.length ? "…" : ""}`;
+    const end = start + maxChars;
+    return `…${cutText(text.substring(start), maxChars)}${end < text.length ? "…" : ""}`;
 };
 
 /**
@@ -226,6 +229,8 @@ export class HistoryQuery {
     private guildId?: () => string | undefined;
     /** Messages with an id at or above this are hidden (the question being answered and anything newer). */
     private cutoffId?: bigint;
+    /** Short tokens for the links handed to the model; one registry per scoped view (= per question). */
+    private cites = new CiteRegistry();
 
     constructor(file: string, options: HistoryQueryOptions) {
         this.guildId = options.guildId;
@@ -245,8 +250,14 @@ export class HistoryQuery {
      * The model already sees the question in its context; archived copies would only pollute search hits, links and counts.
      */
     scoped(beforeMessageId: string): HistoryQuery {
-        if (!/^\d+$/.test(beforeMessageId)) return this;
-        return Object.create(this, { cutoffId: { value: BigInt(beforeMessageId) } }) as HistoryQuery;
+        const cites = { value: new CiteRegistry() };
+        if (!/^\d+$/.test(beforeMessageId)) return Object.create(this, { cites }) as HistoryQuery;
+        return Object.create(this, { cutoffId: { value: BigInt(beforeMessageId) }, cites }) as HistoryQuery;
+    }
+
+    /** Turns the `{cN}` tokens the model pasted from tool results into message links. */
+    expandCites(text: string): string {
+        return this.cites.expand(text);
     }
 
     /** Words must all match; if nothing matches, falls back to any of the words. Bot messages are skipped unless an author is given or `includeBots` is set. */
@@ -295,7 +306,7 @@ export class HistoryQuery {
             .prepare(`SELECT m.* FROM messages m WHERE 1 = 1 ${filter.sql}
                 ORDER BY m.created_at ${direction}, CAST(m.id AS INTEGER) ${direction} LIMIT ?`)
             .all(...filter.params, limit + 1);
-        const result = this.render(rows as any[], limit);
+        const result = this.render(rows as any[], limit, [], LIMITS.rangeTextChars);
         if (args.newest) {
             // Older messages beyond the limit are expected here; flag only a cut caused by the size budget.
             result.truncated = result.count < Math.min(rows.length, limit);
@@ -335,7 +346,7 @@ export class HistoryQuery {
             .prepare(`SELECT m.* FROM messages m WHERE m.channel_id = @c AND m.is_technical = 0 AND ${keyAfter} ${cut}
                 ${order} LIMIT ${after}`)
             .all(bind);
-        return this.render([...prior, anchor, ...next] as any[], before + after + 1);
+        return this.render([...prior, anchor, ...next] as any[], before + after + 1, [], LIMITS.rangeTextChars);
     }
 
     /**
@@ -383,7 +394,7 @@ export class HistoryQuery {
         const first = prior.length ? prior[prior.length - 1] : anchor;
         const last = next.length ? next[next.length - 1] : anchor;
         const shown = [...prior.slice(0, before).reverse(), anchor, ...next.slice(0, after)];
-        const result = this.render(shown, shown.length);
+        const result = this.render(shown, shown.length, [], LIMITS.rangeTextChars);
         const scanCut = prior.length >= LIMITS.conversationScan || next.length >= LIMITS.conversationScan;
         return {
             ...result,
@@ -630,7 +641,7 @@ export class HistoryQuery {
         return { sql: `AND ${parts.join(" AND ")} ${hidden.sql}`, params: [...params, ...hidden.params] };
     }
 
-    private render(rows: any[], limit: number, terms: string[] = []): QueryResult {
+    private render(rows: any[], limit: number, terms: string[] = [], maxChars: number = LIMITS.textChars): QueryResult {
         const overLimit = rows.length > limit;
         const channelNames = new Map<string, string>();
         const nameOf = (id: string) => {
@@ -648,7 +659,7 @@ export class HistoryQuery {
         let budgetHit = false;
         for (const r of rows.slice(0, limit)) {
             const text = this.cleanText(renderBody({ content: r.content, embedsText: r.embeds_text, attachmentsText: r.attachments_text }));
-            const clipped = clip(text, terms);
+            const clipped = clip(text, terms, maxChars);
             const time = formatWarsaw(r.created_at);
             const [y, mo, d, hm] = time.split(/[. ]/);
             const message: HistoryMessage = {
@@ -658,7 +669,7 @@ export class HistoryQuery {
                 time,
                 text: clipped,
                 ...(reactions.has(r.id) ? { reactions: reactions.get(r.id) } : null),
-                ...(guild ? { cite: `[${d}.${mo}.${y} ${hm}](<https://discord.com/channels/${guild}/${r.channel_id}/${r.id}>)` } : null),
+                ...(guild ? { cite: this.cites.add(`[${d}.${mo}.${y} ${hm}](<https://discord.com/channels/${guild}/${r.channel_id}/${r.id}>)`) } : null),
             };
             const size = JSON.stringify(message).length;
             if (chars + size > LIMITS.totalChars) { budgetHit = true; break; }

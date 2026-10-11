@@ -69,7 +69,7 @@ export const buildHistoryTools = (query: HistoryQuery): ToolSpec[] => [
             type: "object",
             properties: {
                 ...FILTER_PROPS,
-                limit: int("Maks. liczba wiadomości (domyślnie 50, maks. 100)."),
+                limit: int("Maks. liczba wiadomości (domyślnie 30, maks. 100)."),
                 newest: { type: "boolean", description: "true = zwróć NAJNOWSZE wiadomości z zakresu (przy braku dat: z całego archiwum)." },
             },
             required: [],
