@@ -15,7 +15,20 @@ export const PROFILE_LIMITS = {
     updateBatch: 400,
     lineChars: 300,
     totalChars: 40000,
-    summaryChars: 1200,
+    summaryChars: 2500,
+    briefChars: 220,
+};
+
+/** Splits the model's reply (`STRESZCZENIE: …` line, then `PROFIL:` and the text) into the short and the full version; a reply without the markers is taken as the full profile. */
+export const parseProfileReply = (reply: string): { summary: string; brief: string } => {
+    const text = reply.trim();
+    const full = /^\s*PROFIL:[ \t]*([\s\S]*)$/im.exec(text);
+    const brief = /^\s*STRESZCZENIE:[ \t]*(.*)$/im.exec(text);
+    if (!full || !brief) return { summary: cutText(text, PROFILE_LIMITS.summaryChars), brief: "" };
+    return {
+        summary: cutText(full[1].trim(), PROFILE_LIMITS.summaryChars),
+        brief: cutText(brief[1].replace(/\s+/g, " ").trim(), PROFILE_LIMITS.briefChars),
+    };
 };
 
 export type AskModel = (system: string, user: string) => Promise<string | null | undefined>;
@@ -67,19 +80,24 @@ export class ProfileService {
 
     private async updateOne(name: string, person: { names: string[]; messages: number; isBot: boolean }, now: number): Promise<boolean> {
         const existing = this.db.getProfile(name);
-        if (existing && now - existing.updatedAt < PROFILE_LIMITS.refreshDays * 86_400_000) return false;
+        const incremental = !!existing && existing.brief !== "";
+        if (incremental && now - existing.updatedAt < PROFILE_LIMITS.refreshDays * 86_400_000) return false;
 
-        const batch = existing ? PROFILE_LIMITS.updateBatch : PROFILE_LIMITS.firstBatch;
-        const messages = this.db.getAuthorMessagesAfter(person.names, existing?.lastSeq ?? 0, this.options.excludedChannelIds, batch, this.options.selfId);
-        if (existing ? messages.length < PROFILE_LIMITS.minNew : messages.length === 0) return false;
+        // A profile without a brief is rewritten at once from the newest messages and the old text; the usual age and new-message thresholds apply to the rest.
+        const batch = incremental ? PROFILE_LIMITS.updateBatch : PROFILE_LIMITS.firstBatch;
+        const messages = this.db.getAuthorMessagesAfter(person.names, incremental ? existing.lastSeq : 0, this.options.excludedChannelIds, batch, this.options.selfId);
+        if (incremental ? messages.length < PROFILE_LIMITS.minNew : messages.length === 0) return false;
 
         const reply = await this.options.ask(this.options.systemPrompt, this.buildInput(name, person.isBot, existing?.summary, messages));
-        const summary = cutText((reply ?? "").trim(), PROFILE_LIMITS.summaryChars);
+        const parsed = parseProfileReply(reply ?? "");
+        const summary = parsed.summary;
         if (!summary) throw new Error("model zwrócił pusty profil");
 
         this.db.upsertProfile({
             name,
             summary,
+            // Without a brief the profile would be rewritten on every run.
+            brief: parsed.brief || cutText(summary.replace(/\s+/g, " "), PROFILE_LIMITS.briefChars),
             messageCount: person.messages,
             lastSeq: Math.max(...messages.map(m => m.seq)),
             updatedAt: now,

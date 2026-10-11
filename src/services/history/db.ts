@@ -4,8 +4,8 @@ import * as path from "path";
 import { ArchiveRow, ReactionCount } from "./mapper.js";
 import { extractEmoji } from "./emoji.js";
 
-/** 1: message_emoji built from existing content; 2: sync cursors reset once so the backfill re-reads messages together with their reactions. */
-const SCHEMA_VERSION = 2;
+/** 1: message_emoji built from existing content; 2: sync cursors reset once so the backfill re-reads messages together with their reactions; 3: profiles.brief (short version for the system prompt). */
+const SCHEMA_VERSION = 3;
 
 /** SQLite's unicode61 folds diacritics but not "ł", so it is folded by hand on both the index and query side. */
 export const foldForSearch = (text: string): string => text.replace(/ł/g, "l").replace(/Ł/g, "L");
@@ -67,6 +67,7 @@ CREATE INDEX IF NOT EXISTS idx_reactions_emoji ON reactions(emoji);
 CREATE TABLE IF NOT EXISTS profiles (
     name TEXT PRIMARY KEY,
     summary TEXT NOT NULL,
+    brief TEXT NOT NULL DEFAULT '',
     message_count INTEGER NOT NULL,
     last_seq INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
@@ -144,7 +145,10 @@ export interface SyncState {
 export interface Profile {
     /** Real first name (see mapGlobalNameNameToRealName). */
     name: string;
+    /** Full profile, read by get_profile and when answering the person. */
     summary: string;
+    /** One or two sentences for the people list in the system prompt; empty for profiles written before it existed (they get rewritten on the next run). */
+    brief: string;
     /** Human messages of this person in the archive when the profile was written. */
     messageCount: number;
     /** Highest message `seq` the profile is based on; the next update reads only newer rows. */
@@ -296,6 +300,10 @@ export class HistoryDb {
                 for (const row of rows) this.indexEmoji(row.id, row.content);
             }
             if (version < 2) this.db.prepare("UPDATE sync_state SET cursor = NULL WHERE cursor IS NOT NULL").run();
+            if (version < 3) {
+                const columns = this.db.prepare("PRAGMA table_info(profiles)").all() as { name: string }[];
+                if (!columns.some(c => c.name === "brief")) this.db.exec("ALTER TABLE profiles ADD COLUMN brief TEXT NOT NULL DEFAULT ''");
+            }
             this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
         })();
     }
@@ -365,13 +373,13 @@ export class HistoryDb {
 
     getProfile(name: string): Profile | undefined {
         const r = this.db.prepare("SELECT * FROM profiles WHERE name = ?").get(name) as any;
-        return r && { name: r.name, summary: r.summary, messageCount: r.message_count, lastSeq: r.last_seq, updatedAt: r.updated_at };
+        return r && { name: r.name, summary: r.summary, brief: r.brief, messageCount: r.message_count, lastSeq: r.last_seq, updatedAt: r.updated_at };
     }
 
     upsertProfile(profile: Profile): void {
-        this.db.prepare(`INSERT INTO profiles (name, summary, message_count, last_seq, updated_at)
-            VALUES (@name, @summary, @messageCount, @lastSeq, @updatedAt)
-            ON CONFLICT(name) DO UPDATE SET summary = excluded.summary, message_count = excluded.message_count,
+        this.db.prepare(`INSERT INTO profiles (name, summary, brief, message_count, last_seq, updated_at)
+            VALUES (@name, @summary, @brief, @messageCount, @lastSeq, @updatedAt)
+            ON CONFLICT(name) DO UPDATE SET summary = excluded.summary, brief = excluded.brief, message_count = excluded.message_count,
                 last_seq = excluded.last_seq, updated_at = excluded.updated_at`).run(profile);
     }
 

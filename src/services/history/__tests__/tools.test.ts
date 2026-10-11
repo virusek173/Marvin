@@ -60,7 +60,7 @@ describe("buildHistoryTools", () => {
     });
 
     it("get_profile returns stored profiles and tolerates junk arguments", async () => {
-        db.upsertProfile({ name: "Adam", summary: "Lubi rowery.", messageCount: 40, lastSeq: 1, updatedAt: Date.UTC(2025, 2, 11, 12, 0) });
+        db.upsertProfile({ name: "Adam", summary: "Lubi rowery.", brief: "", messageCount: 40, lastSeq: 1, updatedAt: Date.UTC(2025, 2, 11, 12, 0) });
         const one: any = await tool("get_profile").run({ person: "AdamNick" });
         expect(one).toMatchObject({ count: 1, profiles: [{ name: "Adam", profile: "Lubi rowery.", basedOnMessages: 40, updated: "2025.03.11" }] });
         expect(((await tool("get_profile").run(null)) as any).count).toBe(1);
