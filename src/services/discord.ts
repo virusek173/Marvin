@@ -26,12 +26,14 @@ import {
     WAKE_UP_MESSAGE_PROMPT,
     HISTORY_TOOLS_PROMPT,
     WEB_SEARCH_PROMPT,
+    AIR_QUALITY_PROMPT,
     getArchiveRangePrompt,
     PromptProfile
 } from "../utils/prompts.js";
 import { CustomEmoji, getEmojiReactionSystemPrompt, isReactable, parseEmojiChoice, shouldRollReaction, isMissingPermission, addReaction } from "../utils/emojiReaction.js";
 import { SHORT_REACTION_MODEL_NAME, SERVER_SUMMARY_MODEL_NAME, PROFILE_MODEL_NAME } from "../utils/consts.js";
 import { buildWebTools } from "./webTools.js";
+import { createAirQuality } from "./airQuality.js";
 import { extractUrls } from "./scraper.js";
 import { MessageArchive, getExcludedChannelIds, HISTORY_DB_FILE } from "./history/archive.js";
 import { HistoryQuery } from "./history/query.js";
@@ -60,6 +62,7 @@ const PERSON_IDS_TTL_MS = 10 * 60 * 1000;
 const EXCLUDED_CHANNEL_IDS = getExcludedChannelIds();
 const openai = new OpenAi();
 const MODEL = openai;
+const airQualityTools = process.env.AIR_QUALITY_PAGE_URL ? createAirQuality(process.env.AIR_QUALITY_PAGE_URL) : null;
 const botExchangeCounters = new Map<string, number>();
 const BOT_EXCHANGE_LIMIT = 2;
 const SERVER_SUMMARY_FALLBACK_DAYS = 3;
@@ -67,6 +70,7 @@ const SERVER_SUMMARY_MAX_MESSAGES = 1500;
 const BOT_EXHAUSTED_REPLY = "Mam Cię dość. Nie pisz do mnie więcej.";
 const WEB_ANSWER_ICON = "🌐";
 const LINK_ANSWER_ICON = "🔗";
+const AIR_ANSWER_ICON = "📦";
 
 /**
  * Main Discord bot service. Handles:
@@ -282,7 +286,7 @@ export class DiscordServce {
     /** Built per request so the date in the prompt is never stale. */
     getSystemContext(withHistoryTools: boolean = false, authorProfile: string = ''): Message {
         const date = new DateService().getFormattedDate();
-        const prompt = getMarvinMotivationSystemPrompt(date, MARVIN_ID, this.getPersonIds(), this.getKnownProfiles()) + WEB_SEARCH_PROMPT + (withHistoryTools ? HISTORY_TOOLS_PROMPT + this.getArchiveRangePrompt() : '') + authorProfile;
+        const prompt = getMarvinMotivationSystemPrompt(date, MARVIN_ID, this.getPersonIds(), this.getKnownProfiles()) + WEB_SEARCH_PROMPT + (airQualityTools ? AIR_QUALITY_PROMPT : '') + (withHistoryTools ? HISTORY_TOOLS_PROMPT + this.getArchiveRangePrompt() : '') + authorProfile;
         return MODEL.messageFactory(prompt, 'system');
     }
 
@@ -503,12 +507,13 @@ export class DiscordServce {
             const authorProfile = this.getAuthorProfile(message);
 
             let fetchedPage = false;
+            let airData = false;
             const typing = setInterval(() => message.channel.sendTyping().catch(() => {}), 8000);
             try {
                 const historyTools = this.historyQuery && this.historyTools.length > 0 ? this.historyQuery.scoped(message.id) : null;
                 assResponse = await MODEL.contextInteractWithTools(
                     [this.getSystemContext(!!historyTools, authorProfile), ...context],
-                    [...(historyTools ? buildHistoryTools(historyTools) : []), ...buildWebTools(() => { fetchedPage = true; })],
+                    [...(historyTools ? buildHistoryTools(historyTools) : []), ...buildWebTools(() => { fetchedPage = true; }), ...(airQualityTools ? airQualityTools(() => { airData = true; }) : [])],
                     { webSearch: true, kind: "question", requireTool: extractUrls(message.content ?? "").length > 0 ? "fetch_url" : undefined, onRound: () => message.channel.sendTyping() }
                 );
                 if (assResponse && historyTools) assResponse = { ...assResponse, content: historyTools.expandCites(assResponse.content ?? "") };
@@ -519,7 +524,7 @@ export class DiscordServce {
             if (assResponse) {
                 const content = stripSystemIcons(stripLeadingTimestampPrefix(assResponse.content ?? ""));
                 if (!content.trim()) throw new Error("Model zwrócił pustą odpowiedź");
-                const icons = [assResponse.webSearch && WEB_ANSWER_ICON, fetchedPage && LINK_ANSWER_ICON].filter(Boolean).join(" ");
+                const icons = [assResponse.webSearch && WEB_ANSWER_ICON, fetchedPage && LINK_ANSWER_ICON, airData && AIR_ANSWER_ICON].filter(Boolean).join(" ");
                 const body = shortenWebCitations(moveCitesToLineStart(content));
                 const [first, ...rest] = splitForDiscord(icons ? `${icons} ${body}` : body);
                 await message.reply(first);
