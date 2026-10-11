@@ -1,6 +1,6 @@
 import { Readable } from "node:stream";
 import axios from "axios";
-import { extractUrls, scrapeUrl } from "../scraper";
+import { extractUrls, isPrivateAddress, scrapeUrl } from "../scraper";
 
 jest.mock("axios");
 
@@ -37,5 +37,26 @@ describe("scrapeUrl", () => {
         (axios.get as jest.Mock).mockRejectedValueOnce(new Error("boom"));
         jest.spyOn(console, "error").mockImplementation(() => {});
         expect(await scrapeUrl("https://example.com")).toBeNull();
+    });
+});
+
+describe("isPrivateAddress", () => {
+    it("blocks loopback, private, link-local, CGNAT and non-public IPv6, allows public ones", () => {
+        for (const ip of ["127.0.0.1", "10.1.2.3", "172.16.0.1", "172.31.255.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "::1", "fd00::1", "fe80::1", "::ffff:127.0.0.1"]) {
+            expect(isPrivateAddress(ip)).toBe(true);
+        }
+        for (const ip of ["8.8.8.8", "172.32.0.1", "1.1.1.1", "2606:4700::1111"]) {
+            expect(isPrivateAddress(ip)).toBe(false);
+        }
+    });
+
+    it("scrapeUrl refuses internal literal addresses and other protocols without any request", async () => {
+        jest.spyOn(console, "error").mockImplementation(() => {});
+        (axios.get as jest.Mock).mockClear();
+        expect(await scrapeUrl("http://127.0.0.1:8080/admin")).toBeNull();
+        expect(await scrapeUrl("http://[::1]/")).toBeNull();
+        expect(await scrapeUrl("http://169.254.169.254/latest/meta-data")).toBeNull();
+        expect(await scrapeUrl("file:///etc/passwd")).toBeNull();
+        expect(axios.get).not.toHaveBeenCalled();
     });
 });

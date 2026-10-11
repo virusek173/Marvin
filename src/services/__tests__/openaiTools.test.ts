@@ -44,6 +44,20 @@ describe("OpenAi.contextInteractWithTools", () => {
         expect(req.input).toEqual([{ role: "system", content: "s" }, { role: "user", content: "hej" }]);
     });
 
+    it("forces the required tool in the first round only", async () => {
+        create
+            .mockResolvedValueOnce(toolRequest(call("c1", "search", { query: "x" })))
+            .mockResolvedValueOnce(answer("gotowe"));
+        await ai().contextInteractWithTools([{ role: "user", content: "hej" }], [search], { requireTool: "search" });
+        expect(create.mock.calls[0][0].tool_choice).toEqual({ type: "function", name: "search" });
+        expect(create.mock.calls[1][0].tool_choice).toBe("auto");
+
+        create.mockReset();
+        create.mockResolvedValueOnce(answer("ok"));
+        await ai().contextInteractWithTools([{ role: "user", content: "hej" }], [search], { requireTool: "nieistniejace" });
+        expect(create.mock.calls[0][0].tool_choice).toBe("auto");
+    });
+
     it("runs requested tools, feeds results back and returns the final answer", async () => {
         create
             .mockResolvedValueOnce(toolRequest(call("c1", "search", { query: "kot" })))

@@ -8,6 +8,7 @@ import {
     splitForDiscord,
     moveCitesToLineStart,
     shortenWebCitations,
+    stripSystemIcons,
 } from "../utils/helpers.js";
 import { Message, OpenAi, ToolSpec } from "../services/openai.js";
 import { DateService } from "./date.js";
@@ -29,7 +30,8 @@ import {
 } from "../utils/prompts.js";
 import { CustomEmoji, getEmojiReactionSystemPrompt, isReactable, parseEmojiChoice, shouldRollReaction, isMissingPermission, addReaction } from "../utils/emojiReaction.js";
 import { SHORT_REACTION_MODEL_NAME, SERVER_SUMMARY_MODEL_NAME, PROFILE_MODEL_NAME } from "../utils/consts.js";
-import { extractUrls, scrapeUrl } from "./scraper.js";
+import { buildWebTools } from "./webTools.js";
+import { extractUrls } from "./scraper.js";
 import { MessageArchive, getExcludedChannelIds, HISTORY_DB_FILE } from "./history/archive.js";
 import { HistoryQuery } from "./history/query.js";
 import { buildHistoryTools } from "./history/tools.js";
@@ -84,6 +86,7 @@ const SERVER_SUMMARY_FALLBACK_DAYS = 3;
 const SERVER_SUMMARY_MAX_MESSAGES = 1500;
 const BOT_EXHAUSTED_REPLY = "Mam Cię dość. Nie pisz do mnie więcej.";
 const WEB_ANSWER_ICON = "🌐";
+const LINK_ANSWER_ICON = "🔗";
 
 /**
  * Main Discord bot service. Handles:
@@ -491,26 +494,18 @@ export class DiscordServce {
 
             await this.waitForPendingArchives(message.channelId);
 
-            const currentUrls = extractUrls(message.content);
             const context = stripImages(await this.getContext(message));
-            const historyUrls = context.flatMap(msg =>
-                typeof msg.content === 'string' ? extractUrls(msg.content) : []
-            );
-            const urls = [...new Set([...currentUrls, ...historyUrls])].slice(0, 5);
-            const scrapedParts = (await Promise.all(urls.map(scrapeUrl))).filter(Boolean) as string[];
-            const scrapedContext: Message[] = scrapedParts.length > 0
-                ? [MODEL.messageFactory(`Zawartość stron z wiadomości użytkownika:\n${scrapedParts.join('\n\n---\n\n')}`)]
-                : [];
 
             const authorProfile = this.getAuthorProfile(message);
 
+            let fetchedPage = false;
             const typing = setInterval(() => message.channel.sendTyping().catch(() => {}), 8000);
             try {
                 const historyTools = this.historyQuery && this.historyTools.length > 0 ? this.historyQuery.scoped(message.id) : null;
                 assResponse = await MODEL.contextInteractWithTools(
-                    [this.getSystemContext(!!historyTools, authorProfile), ...context, ...scrapedContext],
-                    historyTools ? buildHistoryTools(historyTools) : [],
-                    { webSearch: true, kind: "question", onRound: () => message.channel.sendTyping() }
+                    [this.getSystemContext(!!historyTools, authorProfile), ...context],
+                    [...(historyTools ? buildHistoryTools(historyTools) : []), ...buildWebTools(() => { fetchedPage = true; })],
+                    { webSearch: true, kind: "question", requireTool: extractUrls(message.content ?? "").length > 0 ? "fetch_url" : undefined, onRound: () => message.channel.sendTyping() }
                 );
                 if (assResponse && historyTools) assResponse = { ...assResponse, content: historyTools.expandCites(assResponse.content ?? "") };
             } finally {
@@ -518,10 +513,11 @@ export class DiscordServce {
             }
 
             if (assResponse) {
-                const content = stripLeadingTimestampPrefix(assResponse.content ?? "");
+                const content = stripSystemIcons(stripLeadingTimestampPrefix(assResponse.content ?? ""));
                 if (!content.trim()) throw new Error("Model zwrócił pustą odpowiedź");
+                const icons = [assResponse.webSearch && WEB_ANSWER_ICON, fetchedPage && LINK_ANSWER_ICON].filter(Boolean).join(" ");
                 const body = shortenWebCitations(moveCitesToLineStart(content));
-                const [first, ...rest] = splitForDiscord(assResponse.webSearch ? `${WEB_ANSWER_ICON} ${body}` : body);
+                const [first, ...rest] = splitForDiscord(icons ? `${icons} ${body}` : body);
                 await message.reply(first);
                 for (const part of rest) await message.channel.send(part);
             }

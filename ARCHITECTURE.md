@@ -11,6 +11,7 @@ src/
 │   ├── openai.ts          OpenAI API wrapper (tool-calling loop with web search, image description)
 │   ├── grok.ts            Grok/X.ai API wrapper (alternative model)
 │   ├── usage.ts           Token usage per day / call kind / model → data/usage.json
+│   ├── webTools.ts        fetch_url tool: page text for the model (scraper.ts: partial download, SSRF guard)
 │   ├── client.ts          Discord.js client factory
 │   ├── date.ts            Date formatting utility
 │   └── history/           SQLite message archive (see below)
@@ -174,7 +175,7 @@ interface Message {
 
 ## Key Design Decisions
 
-1. **One tool loop, no decider**: every mention goes to the main model with the archive tools and OpenAI's hosted `web_search` side by side; the prompt says when to use which. A reply that used web search starts with 🌐. This removed a ~2.7k-token classification call per question and the second model call of the old Perplexity flow, and the answer keeps Marvin's voice because there is no hand-off of raw text.
+1. **One tool loop, no decider**: every mention goes to the main model with the archive tools and OpenAI's hosted `web_search` side by side; the prompt says when to use which. A reply that used web search starts with 🌐, one that read a page through `fetch_url` with 🔗 (added by code, not by the model). This removed a ~2.7k-token classification call per question and the second model call of the old Perplexity flow, and the answer keeps Marvin's voice because there is no hand-off of raw text.
 
 2. **Cost is input tokens**: a question costs ≈15k input in round 1 (system prompt, tool schemas, 30 context messages) plus every tool result again in each later round. Hence short `{cN}` citation tokens instead of 120-character links, harder clipping of bulk-read messages, a 30-message default for `get_messages`, cheap models for image description and emoji picks, and `data/usage.json` + `make usage` to measure it per day and call kind.
 

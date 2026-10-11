@@ -47,6 +47,14 @@ describe("HistoryContext", () => {
         ]);
     });
 
+    it("drops the source icons from Marvin's earlier replies so the model does not imitate them", () => {
+        db.insertLive(row({ authorId: MARVIN, authorName: "Marvin", isBot: true, content: "🌐 🔗 Poznań to miasto" }));
+        db.insertLive(row({ content: "🌐 ikonka użytkownika" }));
+        const [marvin, human] = make().getContext("c1");
+        expect(marvin.content).toMatch(/^Marvin \(.+\): Poznań to miasto$/);
+        expect(human.content).toContain("🌐 ikonka użytkownika");
+    });
+
     it("renders `Name (time): text` with the real name and maps Marvin to the assistant role", () => {
         db.insertLive(row({ content: "hej" }));
         db.insertLive(row({ authorId: MARVIN, authorName: "Marvin", isBot: true, content: "no cześć" }));

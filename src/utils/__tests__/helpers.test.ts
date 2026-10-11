@@ -1,4 +1,4 @@
-import { pushWithLimit, parseContextTimestamp, splitForDiscord, moveCitesToLineStart, stripLeadingTimestampPrefix, shortenWebCitations } from '../helpers';
+import { pushWithLimit, parseContextTimestamp, splitForDiscord, moveCitesToLineStart, stripLeadingTimestampPrefix, shortenWebCitations, stripSystemIcons, stripSourceIcons } from '../helpers';
 
 describe('stripLeadingTimestampPrefix', () => {
     it('removes an echoed context prefix in the new and the old format', () => {
@@ -42,6 +42,19 @@ describe('shortenWebCitations', () => {
         const cite = '- [01.10.2026 22:02](<https://discord.com/channels/1/2/3>) Jack';
         expect(shortenWebCitations(cite)).toBe(cite);
         expect(shortenWebCitations('Zwykły [link](https://x.pl) w tekście')).toBe('Zwykły [link](https://x.pl) w tekście');
+    });
+});
+
+describe('source icons', () => {
+    it('stripSystemIcons removes leading 🌐/🔗 but keeps 🖼️ and icons later in the text', () => {
+        expect(stripSystemIcons('🌐 🔗 Poznań')).toBe('Poznań');
+        expect(stripSystemIcons('🖼️ Jeż')).toBe('🖼️ Jeż');
+        expect(stripSystemIcons('Mapa 🌐 świata')).toBe('Mapa 🌐 świata');
+    });
+
+    it('stripSourceIcons removes all three leading icons', () => {
+        expect(stripSourceIcons('🌐 🔗 🖼️ Poznań')).toBe('Poznań');
+        expect(stripSourceIcons('Zwykły tekst')).toBe('Zwykły tekst');
     });
 });
 

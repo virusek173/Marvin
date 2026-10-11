@@ -2,7 +2,7 @@ import { HistoryDb, StoredMessage } from "./db.js";
 import { ContextService } from "../context.js";
 import { Message } from "../openai.js";
 import { formatWarsaw } from "./time.js";
-import { mapGlobalNameNameToRealName } from "../../utils/helpers.js";
+import { mapGlobalNameNameToRealName, stripSourceIcons } from "../../utils/helpers.js";
 import { historyLog } from "./log.js";
 
 export const CONTEXT_LIMIT = 30;
@@ -13,8 +13,10 @@ export const renderBody = (m: Pick<StoredMessage, "content" | "embedsText" | "at
 
 /** "Name (YYYY.MM.DD HH:MM): text" — a leading "[" made the model return empty or garbage replies (15% vs <1% in an A/B test). */
 export const renderLine = (m: StoredMessage, selfId?: string): string => {
-    const name = m.authorId === selfId ? "Marvin" : mapGlobalNameNameToRealName[m.authorName];
-    return `${name} (${formatWarsaw(m.createdAt)}): ${renderBody(m)}`;
+    const isSelf = m.authorId === selfId;
+    const name = isSelf ? "Marvin" : mapGlobalNameNameToRealName[m.authorName];
+    const body = renderBody(m);
+    return `${name} (${formatWarsaw(m.createdAt)}): ${isSelf ? stripSourceIcons(body) : body}`;
 };
 
 export const toContextMessage = (m: StoredMessage, selfId?: string): Message => ({
