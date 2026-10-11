@@ -530,11 +530,14 @@ export class HistoryQuery {
 
     /** Generated profile of one person (real name or any of their usernames), or of everyone when no person is given. */
     profiles(person?: string): ProfilesResult {
-        const rows = this.db.prepare("SELECT name, summary, message_count, updated_at FROM profiles ORDER BY message_count DESC").all() as any[];
+        const rows = this.db.prepare("SELECT name, summary, brief, message_count, updated_at FROM profiles ORDER BY message_count DESC").all() as any[];
         const all: PersonProfile[] = rows.map(r => ({ name: r.name, profile: r.summary, basedOnMessages: r.message_count, updated: formatWarsaw(r.updated_at).substring(0, 10) }));
         const wanted = person?.trim();
         if (!wanted) {
-            return { count: all.length, profiles: all, ...(all.length === 0 ? { note: "Profile osób jeszcze nie zostały wygenerowane." } : null) };
+            if (all.length === 0) return { count: 0, profiles: [], note: "Profile osób jeszcze nie zostały wygenerowane." };
+            // Everyone at once would be tens of thousands of characters; the short versions fit, the full one comes with a name.
+            const briefs = all.map((p, i) => ({ ...p, profile: rows[i].brief || p.profile }));
+            return { count: all.length, profiles: briefs, note: "To skrócone wersje; pełny profil jednej osoby dostaniesz, podając jej imię w parametrze person." };
         }
         const names = new Set([wanted, mapGlobalNameNameToRealName[wanted]].map(n => n.toLowerCase()));
         const found = all.filter(p => names.has(p.name.toLowerCase()));

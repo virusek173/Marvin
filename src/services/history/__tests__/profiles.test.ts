@@ -164,6 +164,53 @@ describe("ProfileService", () => {
         expect(db.getProfile("Beata")).toBeUndefined();
     });
 
+    it("stores the full profile and the brief from the model's two-part reply", async () => {
+        write(40);
+        ask.mockResolvedValue("STRESZCZENIE: Rowerzysta,   żartuje z Dockera.\nPROFIL:\nPierwszy akapit.\n\nDrugi akapit.");
+        await service().updateAll();
+        expect(db.getProfile("Adam")).toMatchObject({ summary: "Pierwszy akapit.\n\nDrugi akapit.", brief: "Rowerzysta, żartuje z Dockera." });
+    });
+
+    it("falls back to a cut of the profile as brief when the reply has no markers, so it is not rewritten on every run", async () => {
+        write(40);
+        ask.mockResolvedValue("x".repeat(500));
+        await service().updateAll();
+        expect(db.getProfile("Adam")!.brief).toHaveLength(PROFILE_LIMITS.briefChars);
+        now += 30 * DAY;
+        expect((await service().updateAll()).updated).toEqual([]);
+    });
+
+    it("rewrites a profile without a brief at once from the newest messages, ignoring age and new-message thresholds", async () => {
+        write(40);
+        await service().updateAll();
+        const first = db.getProfile("Adam")!;
+        db.upsertProfile({ ...first, brief: "" });
+
+        now += 1000;
+        ask.mockResolvedValue("STRESZCZENIE: Krótko.\nPROFIL:\nDługo.");
+        expect((await service().updateAll()).updated).toEqual(["Adam"]);
+        const user: string = ask.mock.calls[1][1];
+        expect(user).toContain(`Dotychczasowy profil:\n${first.summary}`);
+        expect(user).toContain("Wiadomości tej osoby (40)");
+        expect(db.getProfile("Adam")).toMatchObject({ summary: "Długo.", brief: "Krótko." });
+        expect((await service().updateAll()).updated).toEqual([]);
+    });
+
+    it("adds the brief column to a database that has the old profiles table", () => {
+        const legacy = path.join(dir, "legacy.db");
+        const raw = new (require("better-sqlite3"))(legacy);
+        raw.exec(`CREATE TABLE profiles (name TEXT PRIMARY KEY, summary TEXT NOT NULL, message_count INTEGER NOT NULL, last_seq INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+            INSERT INTO profiles VALUES ('Adam', 'Stary profil.', 10, 5, 1);`);
+        raw.pragma("user_version = 2");
+        raw.close();
+        const migrated = new HistoryDb(legacy);
+        try {
+            expect(migrated.getProfile("Adam")).toMatchObject({ summary: "Stary profil.", brief: "" });
+        } finally {
+            migrated.close();
+        }
+    });
+
     it("caps the stored profile length", async () => {
         write(40);
         ask.mockResolvedValue("a".repeat(5000));
@@ -184,6 +231,21 @@ describe("ProfileService", () => {
                 const miss = q.profiles("Nikt");
                 expect(miss.count).toBe(0);
                 expect(miss.note).toContain("Adam");
+            } finally {
+                q.close();
+            }
+        });
+
+        it("lists the short versions for everyone and the full profile for one named person", async () => {
+            write(40);
+            ask.mockResolvedValue("STRESZCZENIE: Krótko o Adamie.\nPROFIL:\nPełny opis Adama.");
+            await service().updateAll();
+            const q = new HistoryQuery(file, { excludedChannelIds: [] });
+            try {
+                const all = q.profiles();
+                expect(all.profiles[0].profile).toBe("Krótko o Adamie.");
+                expect(all.note).toMatch(/person/);
+                expect(q.profiles("Adam").profiles[0].profile).toBe("Pełny opis Adama.");
             } finally {
                 q.close();
             }

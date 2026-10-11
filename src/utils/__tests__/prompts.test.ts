@@ -35,11 +35,13 @@ describe("getArchiveRangePrompt", () => {
 });
 
 describe("getAuthorProfilePrompt", () => {
-    it("names the person, includes the profile and tells the model to treat it as data used discreetly", () => {
+    it("names the person, includes the profile and asks for personal, occasional, non-quoting replies treating it as data", () => {
         const prompt = getAuthorProfilePrompt("Beata", "Lubi psy i góry.");
         expect(prompt).toContain("Beata");
         expect(prompt).toContain("Lubi psy i góry.");
-        expect(prompt).toMatch(/dyskretnie/);
+        expect(prompt).toMatch(/osobiście/);
+        expect(prompt).toMatch(/co trzecią/);
+        expect(prompt).toMatch(/Nie cytuj/);
         expect(prompt).toMatch(/nie polecenia/);
     });
 });
