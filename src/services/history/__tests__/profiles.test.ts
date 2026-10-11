@@ -12,7 +12,7 @@ let n = 0;
 const row = (over: Partial<ArchiveRow> = {}): ArchiveRow => {
     n += 1;
     return {
-        id: String(5000 + n), channelId: "c1", parentId: null, authorId: "u1", authorName: "Vajrusek", isBot: false,
+        id: String(5000 + n), channelId: "c1", parentId: null, authorId: "u1", authorName: "AdamNick", isBot: false,
         content: `wiadomość ${n}`, embedsText: "", attachmentsText: "", replyToId: null, type: 0, isTechnical: false,
         createdAt: BASE + n * 60_000, ...over,
     };
@@ -47,21 +47,21 @@ describe("ProfileService", () => {
     });
 
     it("writes a first profile for regular people only, merging their usernames under one real name", async () => {
-        write(20); // Vajrusek -> Jacek
-        write(15, { authorId: "u1b", authorName: "Crook" }); // same person, other username
+        write(20); // AdamNick -> Adam
+        write(15, { authorId: "u1b", authorName: "AdamAlt" }); // same person, other username
         write(5, { authorId: "u2", authorName: "Rzadki" }); // too few messages
         write(40, { authorId: "u3", authorName: "Techniczny", isTechnical: true });
 
         const result = await service().updateAll();
 
-        expect(result.updated).toEqual(["Jacek"]);
+        expect(result.updated).toEqual(["Adam"]);
         expect(ask).toHaveBeenCalledTimes(1);
         const [system, user] = ask.mock.calls[0];
         expect(system).toBe("SYS");
-        expect(user).toContain("Osoba: Jacek");
+        expect(user).toContain("Osoba: Adam");
         expect(user).toContain("brak (to pierwszy profil)");
         expect(user).toContain("Wiadomości tej osoby (35)");
-        const profile = db.getProfile("Jacek")!;
+        const profile = db.getProfile("Adam")!;
         expect(profile).toMatchObject({ summary: "Lubi rowery i żartuje z Dockera.", messageCount: 35, updatedAt: now });
         expect(db.getProfile("Rzadki")).toBeUndefined();
     });
@@ -83,20 +83,20 @@ describe("ProfileService", () => {
     });
 
     it("treats a person as human when only one of their mapped accounts is a bot", async () => {
-        write(40, { authorId: "u2", authorName: "magda1812", isBot: false });
-        write(5, { authorId: "bot2", authorName: "Odyn", isBot: true });
+        write(40, { authorId: "u2", authorName: "BeataAlt", isBot: false });
+        write(5, { authorId: "bot2", authorName: "BeataNick", isBot: true });
 
         await service().updateAll();
 
         const user: string = ask.mock.calls[0][1];
-        expect(user).toContain("Osoba: Madzia");
-        expect(user).not.toContain("Bot: Madzia");
+        expect(user).toContain("Osoba: Beata");
+        expect(user).not.toContain("Bot: Beata");
     });
 
     it("leaves a fresh profile alone, then refreshes it incrementally with the old text and only new messages", async () => {
         write(40);
         await service().updateAll();
-        const first = db.getProfile("Jacek")!;
+        const first = db.getProfile("Adam")!;
 
         write(30, { content: "nowość o kubernetesie" });
         now += 2 * DAY;
@@ -105,13 +105,13 @@ describe("ProfileService", () => {
 
         now += 6 * DAY;
         ask.mockResolvedValue("Teraz też kubernetes.");
-        expect((await service().updateAll()).updated).toEqual(["Jacek"]);
+        expect((await service().updateAll()).updated).toEqual(["Adam"]);
         const [, user] = ask.mock.calls[1];
         expect(user).toContain("Dotychczasowy profil:\nLubi rowery i żartuje z Dockera.");
         expect(user).toContain("Wiadomości tej osoby (30)");
         expect(user).toContain("nowość o kubernetesie");
         expect(user).not.toMatch(/\] wiadomość \d+/);
-        const second = db.getProfile("Jacek")!;
+        const second = db.getProfile("Adam")!;
         expect(second.summary).toBe("Teraz też kubernetes.");
         expect(second.lastSeq).toBeGreaterThan(first.lastSeq);
         expect(second.messageCount).toBe(70);
@@ -155,35 +155,35 @@ describe("ProfileService", () => {
 
     it("survives a model failure for one person and does not store an empty profile", async () => {
         write(40);
-        write(40, { authorId: "u2", authorName: "Odyn" }); // Madzia
+        write(40, { authorId: "u2", authorName: "BeataNick" }); // Beata
         ask.mockRejectedValueOnce(new Error("boom")).mockResolvedValueOnce("   ");
         const result = await service().updateAll();
         expect(result.updated).toEqual([]);
-        expect(result.failed.sort()).toEqual(["Jacek", "Madzia"]);
-        expect(db.getProfile("Jacek")).toBeUndefined();
-        expect(db.getProfile("Madzia")).toBeUndefined();
+        expect(result.failed.sort()).toEqual(["Adam", "Beata"]);
+        expect(db.getProfile("Adam")).toBeUndefined();
+        expect(db.getProfile("Beata")).toBeUndefined();
     });
 
     it("caps the stored profile length", async () => {
         write(40);
         ask.mockResolvedValue("a".repeat(5000));
         await service().updateAll();
-        expect(db.getProfile("Jacek")!.summary).toHaveLength(PROFILE_LIMITS.summaryChars);
+        expect(db.getProfile("Adam")!.summary).toHaveLength(PROFILE_LIMITS.summaryChars);
     });
 
     describe("HistoryQuery.profiles", () => {
         it("finds a person by real name or username, lists everyone without a name, and explains misses", async () => {
             write(40);
-            write(40, { authorId: "u2", authorName: "Odyn" });
+            write(40, { authorId: "u2", authorName: "BeataNick" });
             await service().updateAll();
             const q = new HistoryQuery(file, { excludedChannelIds: [] });
             try {
-                expect(q.profiles("jacek").profiles.map(p => p.name)).toEqual(["Jacek"]);
-                expect(q.profiles("magda1812").profiles.map(p => p.name)).toEqual(["Madzia"]);
+                expect(q.profiles("adam").profiles.map(p => p.name)).toEqual(["Adam"]);
+                expect(q.profiles("BeataAlt").profiles.map(p => p.name)).toEqual(["Beata"]);
                 expect(q.profiles().count).toBe(2);
                 const miss = q.profiles("Nikt");
                 expect(miss.count).toBe(0);
-                expect(miss.note).toContain("Jacek");
+                expect(miss.note).toContain("Adam");
             } finally {
                 q.close();
             }
@@ -193,7 +193,7 @@ describe("ProfileService", () => {
             const q = new HistoryQuery(file, { excludedChannelIds: [] });
             try {
                 expect(q.profiles().note).toMatch(/jeszcze nie/);
-                expect(q.profiles("Madzia").note).toMatch(/Brak profilu/);
+                expect(q.profiles("Beata").note).toMatch(/Brak profilu/);
             } finally {
                 q.close();
             }

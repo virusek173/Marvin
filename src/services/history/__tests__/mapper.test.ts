@@ -6,7 +6,7 @@ const base = (over: any = {}) => ({
     id: "5",
     channelId: "c1",
     channel: { isThread: () => false },
-    author: { id: "u1", username: "vaj", globalName: "Vajrusek", bot: false },
+    author: { id: "u1", username: "vaj", globalName: "AdamNick", bot: false },
     content: "hej",
     embeds: [],
     attachments: new Map(),

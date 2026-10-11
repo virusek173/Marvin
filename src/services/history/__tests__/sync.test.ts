@@ -6,7 +6,7 @@ const msg = (id: number, channelId = "c1", content = `msg ${id}`) => ({
     id: String(id),
     channelId,
     channel: { isThread: () => false },
-    author: { id: "u1", username: "vaj", globalName: "Vajrusek", bot: false },
+    author: { id: "u1", username: "vaj", globalName: "AdamNick", bot: false },
     content,
     embeds: [],
     attachments: new Map(),

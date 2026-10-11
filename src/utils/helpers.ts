@@ -1,38 +1,24 @@
 import { Message } from "../services/openai.js";
 import { ERROR_MESSAGE_PREFIX } from "../services/history/technical.js";
-
-/** Proxy handler that returns the property value, the property name, or empty string as fallback. */
-export const proxyHandler = {
-  get(target: any, prop: any) {
-    return target[prop] || prop || "";
-  },
-};
+import { getNicks } from "./people.js";
 
 /**
  * Maps Discord global usernames to real first names used in conversation context.
+ * The map lives in data/people.json (see people.ts), not in the repo, and is re-read when the file changes.
  * If the username is not in the map, the Proxy returns the username itself as fallback.
- * Add new entries here when a team member joins or changes their Discord username.
  */
-export const mapGlobalNameNameToRealName = new Proxy(
-  {
-    Vajrusek: "Jacek",
-    Crook: "Jacek",
-    Odyn: "Madzia",
-    magda1812: "Madzia",
-    Hardik: "Domin",
-    Dombear: "Domin",
-    Zielarz: "Wiktor",
-    Virzen: "Wiktor",
-    Enczarko: "Basia",
-    enczarko: "Basia",
-    Grzerelli: "Grzegorz",
-    grzerelli: "Grzegorz",
-    luna03840: "Lena",
-    Луна: "Lena",
-    zoltymason: "Mason",
+export const mapGlobalNameNameToRealName: Record<string, string> = new Proxy({} as Record<string, string>, {
+  get: (_target, prop: any) => {
+    const nicks = getNicks();
+    return (typeof prop === "string" && Object.prototype.hasOwnProperty.call(nicks, prop) && nicks[prop]) || prop || "";
   },
-  proxyHandler
-);
+  has: (_target, prop) => typeof prop === "string" && Object.prototype.hasOwnProperty.call(getNicks(), prop),
+  ownKeys: () => Reflect.ownKeys(getNicks()),
+  getOwnPropertyDescriptor: (_target, prop) =>
+    typeof prop === "string" && Object.prototype.hasOwnProperty.call(getNicks(), prop)
+      ? { value: getNicks()[prop], enumerable: true, configurable: true, writable: true }
+      : undefined,
+});
 
 /**
  * Handles errors from AI service calls by logging and replying to the Discord message.

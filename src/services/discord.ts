@@ -10,6 +10,7 @@ import {
     shortenWebCitations,
     stripSystemIcons,
 } from "../utils/helpers.js";
+import { collectPersonIds } from "../utils/people.js";
 import { Message, OpenAi, ToolSpec } from "../services/openai.js";
 import { DateService } from "./date.js";
 import { ClientService } from "./client.js";
@@ -25,7 +26,8 @@ import {
     WAKE_UP_MESSAGE_PROMPT,
     HISTORY_TOOLS_PROMPT,
     WEB_SEARCH_PROMPT,
-    getArchiveRangePrompt
+    getArchiveRangePrompt,
+    PromptProfile
 } from "../utils/prompts.js";
 import { CustomEmoji, getEmojiReactionSystemPrompt, isReactable, parseEmojiChoice, shouldRollReaction, isMissingPermission, addReaction } from "../utils/emojiReaction.js";
 import { SHORT_REACTION_MODEL_NAME, SERVER_SUMMARY_MODEL_NAME, PROFILE_MODEL_NAME } from "../utils/consts.js";
@@ -50,30 +52,10 @@ const {
     BOTS_CHANNEL_ID,
     MARVIN_ID,
     MARVIN_USERNAME,
-    TEST_WEBHOOK_AS_HUMAN,
-    HOMAR_ID,
-    JACEK_ID,
-    DOMIN_ID,
-    MARIUSZ_ID,
-    WIKTOR_ID,
-    MADZIA_ID,
-    MASON_ID,
-    MUGDA_ID,
-    WIBOT_ID
+    TEST_WEBHOOK_AS_HUMAN
 } = process.env;
 
-const peopleMap = {
-    "MarvinId": MARVIN_ID || '',
-    "HomarId": HOMAR_ID || '',
-    "JacekId": JACEK_ID || '',
-    "DominId": DOMIN_ID || '',
-    "MariuszId": MARIUSZ_ID || '',
-    "WiktorId": WIKTOR_ID || '',
-    "MadziaId": MADZIA_ID || '',
-    "MasonId": MASON_ID || '',
-    "MugdaId": MUGDA_ID || '',
-    "WibotId": WIBOT_ID || '',
-}
+const peopleMap = collectPersonIds(process.env);
 
 const EXCLUDED_CHANNEL_IDS = getExcludedChannelIds();
 const openai = new OpenAi();
@@ -273,7 +255,7 @@ export class DiscordServce {
     /**
      * Converts a Discord message into a context-ready Message object.
      * Prepends the sender's real name (from mapGlobalNameNameToRealName) to the content.
-     * Example: "zoltymason: hej co słychać" → {role: 'user', content: 'Mason: hej co słychać'}
+     * Example: "ewanick: hej co słychać" → {role: 'user', content: 'Ewa: hej co słychać'}
      */
     async userResponseFactory(message: any, imageDescriptions?: string[]) {
         const realName = mapGlobalNameNameToRealName[message.author.globalName];
@@ -299,8 +281,18 @@ export class DiscordServce {
     /** Built per request so the date in the prompt is never stale. */
     getSystemContext(withHistoryTools: boolean = false, authorProfile: string = ''): Message {
         const date = new DateService().getFormattedDate();
-        const prompt = getMarvinMotivationSystemPrompt(date, peopleMap) + WEB_SEARCH_PROMPT + (withHistoryTools ? HISTORY_TOOLS_PROMPT + this.getArchiveRangePrompt() : '') + authorProfile;
+        const prompt = getMarvinMotivationSystemPrompt(date, peopleMap, this.getKnownProfiles()) + WEB_SEARCH_PROMPT + (withHistoryTools ? HISTORY_TOOLS_PROMPT + this.getArchiveRangePrompt() : '') + authorProfile;
         return MODEL.messageFactory(prompt, 'system');
+    }
+
+    /** Generated profiles of everyone profiled so far (empty when profiles are off or the archive is unavailable). */
+    private getKnownProfiles(): PromptProfile[] {
+        try {
+            return this.historyQuery?.profiles().profiles.map(p => ({ name: p.name, profile: p.profile })) ?? [];
+        } catch (error: any) {
+            console.log("err (profile osób): ", error?.message);
+            return [];
+        }
     }
 
     /** Prompt line with the date the archive starts, or '' when unknown (the model is then told to read it from get_stats). */

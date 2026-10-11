@@ -2,3 +2,4 @@ node_modules
 dest
 .env
 .env.staging
+people.json

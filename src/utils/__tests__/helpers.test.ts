@@ -80,8 +80,8 @@ describe('splitForDiscord', () => {
 
 describe('parseContextTimestamp', () => {
     it('parses the leading timestamp prefix', () => {
-        expect(parseContextTimestamp('[2026.09.29 18:53] Domin: hej')).toEqual(new Date(2026, 8, 29, 18, 53));
-        expect(parseContextTimestamp('Domin (2026.09.29 18:53): hej')).toEqual(new Date(2026, 8, 29, 18, 53));
+        expect(parseContextTimestamp('[2026.09.29 18:53] Cezary: hej')).toEqual(new Date(2026, 8, 29, 18, 53));
+        expect(parseContextTimestamp('Cezary (2026.09.29 18:53): hej')).toEqual(new Date(2026, 8, 29, 18, 53));
     });
 
     it('returns null when there is no prefix', () => {

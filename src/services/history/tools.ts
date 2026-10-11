@@ -5,8 +5,8 @@ const str = (description: string) => ({ type: "string", description });
 const int = (description: string) => ({ type: "integer", description });
 
 const FILTER_PROPS = {
-    author: str("Imię autora, np. Jacek, Madzia, Domin (opcjonalnie)."),
-    reply_to_author: str("Tylko wiadomości, które są jawną odpowiedzią (funkcja 'odpowiedz') na wiadomość tej osoby, np. 'ile razy Wiktor odpisał Jackowi' = author Wiktor + reply_to_author Jacek (opcjonalnie)."),
+    author: str("Imię autora, np. Kasia, Ania, Basia (opcjonalnie)."),
+    reply_to_author: str("Tylko wiadomości, które są jawną odpowiedzią (funkcja 'odpowiedz') na wiadomość tej osoby, np. 'ile razy Ola odpisała Ani' = author Ola + reply_to_author Kasia (opcjonalnie)."),
     emoji: str("Tylko wiadomości, w których TEKŚCIE pada to emoji, np. '😂' albo nazwa emoji serwera ':pepe:' (opcjonalnie)."),
     reaction: str("Tylko wiadomości, które dostały TO emoji jako reakcję, np. '👍' albo ':pepe:' (opcjonalnie)."),
     channel: str("Nazwa kanału bez #, np. ogolny (opcjonalnie)."),
@@ -109,7 +109,7 @@ export const buildHistoryTools = (query: HistoryQuery): ToolSpec[] => [
             "Liczy wiadomości w archiwum i grupuje je, np. 'kto ile napisał', 'który dzień był najgłośniejszy', 'ile wiadomości w sierpniu', 'ile razy padło słowo X'. " +
             "Zwraca dokładne liczby z całego archiwum (nie pobieraj wiadomości, żeby je liczyć ręcznie). Liczy tylko wiadomości ludzi, chyba że include_bots=true albo podano autora. " +
             "Bez group_by zwraca tylko łączną liczbę pasujących wiadomości oraz datę pierwszej i ostatniej (bez filtrów dat to właśnie początek i koniec archiwum — użyj tego przy pytaniach o 'pierwszą wiadomość' i 'od początku'). " +
-            "Z with_length=true dodaje średnią długość wiadomości (znaki i słowa; tylko wiadomości z tekstem), np. 'średnia długość wiadomości Wiktora i Masona' = group_by author, with_length. " +
+            "Z with_length=true dodaje średnią długość wiadomości (znaki i słowa; tylko wiadomości z tekstem), np. 'średnia długość wiadomości Ani i Kasi' = group_by author, with_length. " +
             "Z filtrem reply_to_author liczy odpowiedzi jednej osoby na wiadomości drugiej. " +
             "Emoji: group_by=emoji daje najczęstsze emoji w TEKŚCIE wiadomości (count = liczba użyć), group_by=reaction najczęstsze emoji użyte jako REAKCJE na pasujące wiadomości; filtr emoji zawęża do wiadomości z emoji w tekście (total = liczba takich wiadomości, emojiUses = ile razy emoji padło; na 'ile razy wysłał X' odpowiadaj emojiUses), filtr reaction do wiadomości, które dostały taką reakcję. " +
             "Z with_reactions=true dodaje łączną liczbę otrzymanych reakcji (np. 'kto dostaje najwięcej reakcji' = group_by author, sort reactions). Wiadomo tylko, ile reakcji wiadomość dostała, nie kto je dał.",
@@ -177,10 +177,10 @@ export const buildHistoryTools = (query: HistoryQuery): ToolSpec[] => [
         name: "get_profile",
         description:
             "Zwraca wygenerowany, nieoficjalny profil osoby z serwera albo innego bota (np. Mugda, Wibot): zainteresowania, ulubione tematy, styl pisania, typowe żarty (powstaje z jej wiadomości i odświeża się raz w tygodniu). " +
-            "Użyj do pytań w stylu 'co lubi Madzia', 'jaki jest Wiktor', 'z czego żartuje Mason', 'jaka jest Mugda'. Bez parametru person zwraca wszystkie profile.",
+            "Użyj do pytań w stylu 'co lubi Ania', 'jaki jest Ola', 'z czego żartuje Ewa', 'jaka jest Mugda'. Bez parametru person zwraca wszystkie profile.",
         parameters: {
             type: "object",
-            properties: { person: str("Imię osoby, np. Madzia, Jacek (opcjonalnie; bez niego dostaniesz wszystkich).") },
+            properties: { person: str("Imię osoby, np. Ania, Kasia (opcjonalnie; bez niego dostaniesz wszystkich).") },
             required: [],
         },
         run: raw => query.profiles(asString(asArgs(raw).person)),
