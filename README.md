@@ -26,7 +26,6 @@ src/
 │   ├── context.ts         In-memory FIFO context (fallback only)
 │   ├── history/           SQLite message archive: live write, backfill, context, read-only search tools, profiles, monthly report
 │   ├── openai.ts          OpenAI API wrapper (primary AI, tool loop, web search)
-│   ├── grok.ts            Grok/X.ai API wrapper
 │   ├── usage.ts           Token usage statistics (data/usage.json)
 │   ├── client.ts          Discord.js client factory
 │   └── date.ts            Date formatting
