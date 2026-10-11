@@ -14,7 +14,7 @@ export interface UsernameToNameMap {
     [discordGlobalName: string]: string;
 }
 
-/** Discord ids keyed `<Name>Id`, collected from the `<NAME>_ID` variables (see collectPersonIds in people.ts). */
+/** Discord ids keyed by real first name, read from the message archive (HistoryQuery.personIds). */
 export type PeopleMap = Record<string, DiscordId>;
 
 /**

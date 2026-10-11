@@ -9,10 +9,9 @@ const nicks = {
   DorotaNick: "Dorota", DorotaAlt: "Dorota",
   EwaNick: "Ewa", ewanick: "Ewa",
   FilipNick: "Filip", filipnick: "Filip",
-  GosiaNick: "Gosia", "Гося": "Gosia",
   HenrykNick: "Henryk",
 };
 
 const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "marvin-people-")), "people.json");
-fs.writeFileSync(file, JSON.stringify(nicks));
+fs.writeFileSync(file, JSON.stringify({ nicks, noPing: ["Beata"] }));
 process.env.PEOPLE_FILE = file;

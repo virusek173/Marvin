@@ -36,7 +36,6 @@ npm test              # Jest tests
 | `MARVIN_ID` | Bot's Discord user ID — used to detect mentions |
 | `MARVIN_USERNAME` | Bot's username — used to ignore its own messages |
 | `OPENAI_API_KEY` | OpenAI API key — not read in our code, the `openai` SDK picks it up itself (`new OpenAI()`) |
-| `<NAME>_ID` | Discord ID of a person or bot, one variable each (e.g. `ANNA_ID`). Any `<NAME>_ID` except `MARVIN_ID`, `CHANNEL_ID` and `BOTS_CHANNEL_ID` is picked up automatically (`collectPersonIds` in `people.ts`) and used for the mention list in the system prompt, so a new person needs no code change |
 
 ## Other Bots on the Server
 
@@ -132,9 +131,9 @@ Informs about "niedziela handlowa" (trading/non-trading Sundays in Poland — da
 
 ## Discord globalName → Real Name Mapping
 
-`mapGlobalNameNameToRealName` in `helpers.ts` maps Discord usernames to real first names prepended to messages in context. The map is NOT in the repo: it is a flat JSON object `{"nick": "Name", ...}` in `./people.json` next to `docker-compose.yml` (git-ignored), bind-mounted read-only to `data/people.json` in both the production and the staging container (`PEOPLE_FILE` overrides the path). Edit it in place (a single-file bind mount keeps pointing at the old inode if an editor replaces the file by rename; then restart the container). `people.ts` re-reads it when the file's mtime changes (checked at most every 5 s), so edits need no restart; a broken file keeps the previous map (one log line). If a username is not in the map, or the file is missing, the Proxy returns the username itself. Tests use a throw-away map with fictional names written by `jest.setup.cjs`.
+`mapGlobalNameNameToRealName` in `helpers.ts` maps Discord usernames to real first names prepended to messages in context. The map is NOT in the repo: it is the `nicks` section (`{"nick": "Name", ...}`) of `./people.json`, whose second section `noPing` is a list of first names of people who did not agree to be pinged (`{"nicks": {...}, "noPing": ["Name"]}`); it lives in `./people.json` next to `docker-compose.yml` (git-ignored), bind-mounted read-only to `data/people.json` in both the production and the staging container (`PEOPLE_FILE` overrides the path). Edit it in place (a single-file bind mount keeps pointing at the old inode if an editor replaces the file by rename; then restart the container). `people.ts` re-reads it when the file's mtime changes (checked at most every 5 s), so edits need no restart; a broken file (or one without `nicks`) keeps the previous data (one log line). If a username is not in the map, or the file is missing, the Proxy returns the username itself. Tests use a throw-away map with fictional names written by `jest.setup.cjs`.
 
-The people section of Marvin's system prompt is built the same way, not hand-written: one short line per person from the generated profiles (`getKnownProfiles` in `discord.ts` → `describePeople`, ~220 characters each, nothing until profiles exist), and the mention list comes from the `<NAME>_ID` variables (`collectPersonIds`); names in the map without an ID are listed as "do not ping".
+The people section of Marvin's system prompt is built the same way, not hand-written: one short line per person from the generated profiles (`getKnownProfiles` in `discord.ts` → `describePeople`, ~220 characters each, nothing until profiles exist), and the mention list comes from the archive, not from environment variables: `HistoryQuery.personIds()` returns the Discord id per first name (nick map applied) of every author with ≥30 messages and activity in the last 180 days (humans and other bots; Marvin, technical messages and excluded channels left out; the id with the most messages wins), cached for 10 minutes in `discord.ts` (`getPersonIds`). People in `noPing` get no mention and are listed as "write the plain name". A person with no archive id is simply written by name.
 
 ## Tests
 

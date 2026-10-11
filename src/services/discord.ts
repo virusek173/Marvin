@@ -10,7 +10,7 @@ import {
     shortenWebCitations,
     stripSystemIcons,
 } from "../utils/helpers.js";
-import { collectPersonIds } from "../utils/people.js";
+import type { PeopleMap } from "../utils/types.js";
 import { Message, OpenAi, ToolSpec } from "../services/openai.js";
 import { DateService } from "./date.js";
 import { ClientService } from "./client.js";
@@ -55,7 +55,7 @@ const {
     TEST_WEBHOOK_AS_HUMAN
 } = process.env;
 
-const peopleMap = collectPersonIds(process.env);
+const PERSON_IDS_TTL_MS = 10 * 60 * 1000;
 
 const EXCLUDED_CHANNEL_IDS = getExcludedChannelIds();
 const openai = new OpenAi();
@@ -85,6 +85,7 @@ export class DiscordServce {
     private archive: MessageArchive;
     private historySync: HistorySync | null = null;
     private historyQuery: HistoryQuery | null = null;
+    private personIds: { ids: PeopleMap; at: number } | null = null;
     private historyTools: ToolSpec[] = [];
     private profilesRunning = false;
     private emojiReactionsDisabled = false;
@@ -281,8 +282,21 @@ export class DiscordServce {
     /** Built per request so the date in the prompt is never stale. */
     getSystemContext(withHistoryTools: boolean = false, authorProfile: string = ''): Message {
         const date = new DateService().getFormattedDate();
-        const prompt = getMarvinMotivationSystemPrompt(date, peopleMap, this.getKnownProfiles()) + WEB_SEARCH_PROMPT + (withHistoryTools ? HISTORY_TOOLS_PROMPT + this.getArchiveRangePrompt() : '') + authorProfile;
+        const prompt = getMarvinMotivationSystemPrompt(date, MARVIN_ID, this.getPersonIds(), this.getKnownProfiles()) + WEB_SEARCH_PROMPT + (withHistoryTools ? HISTORY_TOOLS_PROMPT + this.getArchiveRangePrompt() : '') + authorProfile;
         return MODEL.messageFactory(prompt, 'system');
+    }
+
+    /** Discord ids of people and bots by first name, read from the archive (cached; the query scans the author table). */
+    private getPersonIds(): PeopleMap {
+        if (this.personIds && Date.now() - this.personIds.at < PERSON_IDS_TTL_MS) return this.personIds.ids;
+        try {
+            const ids = this.historyQuery?.personIds() ?? {};
+            this.personIds = { ids, at: Date.now() };
+            return ids;
+        } catch (error: any) {
+            console.log("err (id osób): ", error?.message);
+            return this.personIds?.ids ?? {};
+        }
     }
 
     /** Generated profiles of everyone profiled so far (empty when profiles are off or the archive is unavailable). */

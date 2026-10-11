@@ -565,6 +565,32 @@ export class HistoryQuery {
         return `${d}.${mo}.${y}`;
     }
 
+    /** Discord id per real first name (nick map applied) of everyone recently active in the archive, for pinging; Marvin himself is left out. */
+    personIds(options: { minMessages?: number; activeDays?: number; now?: number } = {}): Record<string, string> {
+        const { minMessages = 30, activeDays = 180, now = Date.now() } = options;
+        const hidden = this.excludedClause("m");
+        const rows = this.db
+            .prepare(`SELECT m.author_id, m.author_name, COUNT(*) AS n, MAX(m.created_at) AS last FROM messages m
+                WHERE m.is_technical = 0 ${hidden.sql} GROUP BY m.author_id, m.author_name`)
+            .all(...hidden.params) as { author_id: string; author_name: string; n: number; last: number }[];
+        const perId = new Map<string, { name: string; n: number; last: number; top: number }>();
+        for (const r of rows) {
+            if (r.author_id === this.selfId || r.author_name === "Deleted User") continue;
+            const entry = perId.get(r.author_id) ?? { name: r.author_name, n: 0, last: 0, top: 0 };
+            entry.n += r.n;
+            entry.last = Math.max(entry.last, r.last);
+            if (r.n > entry.top) { entry.top = r.n; entry.name = r.author_name; }
+            perId.set(r.author_id, entry);
+        }
+        const best = new Map<string, { id: string; n: number }>();
+        for (const [id, e] of perId) {
+            if (e.n < minMessages || e.last < now - activeDays * 86_400_000) continue;
+            const name = mapGlobalNameNameToRealName[e.name];
+            if (!best.has(name) || best.get(name)!.n < e.n) best.set(name, { id, n: e.n });
+        }
+        return Object.fromEntries([...best].map(([name, v]) => [name, v.id]));
+    }
+
     private empty(note: string): QueryResult {
         return { timezone: WARSAW_TZ, count: 0, truncated: false, messages: [], note };
     }

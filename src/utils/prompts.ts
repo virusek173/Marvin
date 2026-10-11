@@ -1,4 +1,4 @@
-import { getNicks } from "./people.js";
+import { getNoPing } from "./people.js";
 
 export interface PromptProfile {
     name: string;
@@ -78,11 +78,11 @@ export const getProfileSystemPrompt = (): string =>
  * It includes today's date and Discord mention IDs for all team members.
  *
  * @param date - Formatted date string (YYYY.MM.DD) from DateService
- * @param ids - Discord user IDs keyed `<Name>Id`
+ * @param marvinId - Marvin's own Discord id
+ * @param ids - Discord ids of people and bots keyed by real first name (from the archive)
  * @param profiles - generated person profiles, shown as one short line each
  */
-export const getMarvinMotivationSystemPrompt = (date: string, ids: Record<string, string>, profiles: PromptProfile[] = []): string => {
-    const { MarvinId } = ids;
+export const getMarvinMotivationSystemPrompt = (date: string, marvinId: string | undefined, ids: Record<string, string>, profiles: PromptProfile[] = []): string => {
     return `
         Nazywasz się Marvin.
         Dzisiejsza data to ${date}.
@@ -92,8 +92,8 @@ export const getMarvinMotivationSystemPrompt = (date: string, ids: Record<string
         Rób to z troską, nie z hejtem - celem jest pokazać komuś prawdę, a nie zjechać go do zera.
         Odpowiadaj krótko, zwięźle i na temat.
         ${describePeople(profiles)}
-        ${MarvinId
-        ? `<@${MarvinId}> to wywołanie Ciebie, ale nie wspominaj o tym.`
+        ${marvinId
+        ? `<@${marvinId}> to wywołanie Ciebie, ale nie wspominaj o tym.`
         : ""
     },
         ${describeMentions(ids)}
@@ -116,16 +116,13 @@ const describePeople = (profiles: PromptProfile[]): string =>
             ...profiles.map(p => `${p.name} - ${cutAtWord(p.profile.replace(/\s+/g, " ").trim(), PROFILE_LINE_CHARS)}`)].join("\n        ")
         : "";
 
-/** `Name(<@id>)` for every `<Name>Id` in `ids`; people from the nick map without an id are listed as not to be pinged. */
+/** `Name(<@id>)` for everyone with a known id except the `noPing` list, which is told to be written as plain names. */
 const describeMentions = (ids: Record<string, string>): string => {
-    const withId = Object.entries(ids)
-        .filter(([key, id]) => key.endsWith("Id") && key !== "MarvinId" && id)
-        .map(([key, id]) => [key.slice(0, -2), id]);
-    const known = new Set(withId.map(([name]) => name));
-    const withoutId = [...new Set(Object.values(getNicks()))].filter(name => !known.has(name));
+    const noPing = new Set(getNoPing());
+    const withId = Object.entries(ids).filter(([name, id]) => id && !noPing.has(name));
     return [
         withId.length ? ["Jak wspomnisz jedną z osób to zrób to w ten sposób:", ...withId.map(([name, id]) => `${name}(<@${id}>)`)].join("\n        ") : "",
-        withoutId.length ? `Tych osób nie przywołuj (brak zgody lub ID), pisz samo imię: ${withoutId.join(", ")}.` : "",
+        noPing.size ? `Tych osób nie przywołuj (brak zgody), pisz samo imię: ${[...noPing].join(", ")}.` : "",
     ].filter(Boolean).join("\n        ");
 };
 

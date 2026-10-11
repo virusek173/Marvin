@@ -493,6 +493,31 @@ describe("HistoryQuery", () => {
         });
     });
 
+    describe("personIds", () => {
+        const many = (n: number, over: Partial<ArchiveRow>) => { for (let i = 0; i < n; i++) db.insertLive(row(over)); };
+        const now = BASE + 86_400_000;
+
+        it("maps nicks to first names, merges a person's nicks and picks the id with the most messages", () => {
+            many(5, { authorId: "u1", authorName: "AdamNick" });
+            many(3, { authorId: "u1", authorName: "AdamAlt" });
+            many(2, { authorId: "u9", authorName: "AdamNick" });
+            many(6, { authorId: "u2", authorName: "Zbyszek" });
+            expect(q.personIds({ minMessages: 1, now })).toEqual({ Adam: "u1", Zbyszek: "u2" });
+        });
+
+        it("skips Marvin, technical and excluded-channel messages, quiet and inactive authors", () => {
+            many(5, { authorId: MARVIN, authorName: "Marvin", isBot: true });
+            many(5, { authorId: "u3", authorName: "BeataNick", isTechnical: true });
+            many(5, { authorId: "u4", authorName: "CezaryNick", channelId: "secret" });
+            many(2, { authorId: "u5", authorName: "DorotaNick" });
+            many(5, { authorId: "u6", authorName: "EwaNick", createdAt: BASE - 400 * 86_400_000 });
+            many(5, { authorId: "u7", authorName: "Deleted User" });
+            many(5, { authorId: "u8", authorName: "FilipNick" });
+            open(["secret"]);
+            expect(q.personIds({ minMessages: 5, activeDays: 180, now })).toEqual({ Filip: "u8" });
+        });
+    });
+
     describe("emoji and reactions", () => {
         const add = (over: Partial<ArchiveRow>, reactions: { emoji: string; count: number }[] = []) => {
             const r = row(over);
