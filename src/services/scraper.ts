@@ -2,7 +2,7 @@ import axios from "axios";
 import dns from "node:dns";
 import http from "node:http";
 import https from "node:https";
-import { isIP } from "node:net";
+import { BlockList, isIP } from "node:net";
 
 const MAX_CONTENT_PER_URL = 4000;
 const MAX_DOWNLOAD_BYTES = 400_000;
@@ -28,21 +28,19 @@ function stripHtml(html: string): string {
 
 const DISCORD_MESSAGE_LINK = /^https?:\/\/(?:(?:ptb|canary)\.)?discord(?:app)?\.com\/channels\//i;
 
-/** True for loopback, private, link-local, carrier-grade NAT, multicast and other non-public addresses (IPv4 and IPv6). */
+const NON_PUBLIC = new BlockList();
+for (const [net, prefix] of [
+    ["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16],
+    ["172.16.0.0", 12], ["192.168.0.0", 16], ["224.0.0.0", 4], ["240.0.0.0", 4],
+] as const) NON_PUBLIC.addSubnet(net, prefix, "ipv4");
+for (const [net, prefix] of [["::", 128], ["::1", 128], ["fc00::", 7], ["fe80::", 10], ["ff00::", 8]] as const) NON_PUBLIC.addSubnet(net, prefix, "ipv6");
+
+/** True for loopback, private, link-local, carrier-grade NAT, multicast and other non-public addresses (IPv4 and IPv6, including IPv4-mapped). */
 export function isPrivateAddress(address: string): boolean {
     const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(address);
     if (mapped) return isPrivateAddress(mapped[1]);
-    if (isIP(address) === 4) {
-        const [a, b] = address.split(".").map(Number);
-        return a === 0 || a === 10 || a === 127 || a >= 224
-            || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31)
-            || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
-    }
-    if (isIP(address) === 6) {
-        const lower = address.toLowerCase();
-        return lower === "::" || lower === "::1" || /^f[cd]/.test(lower) || /^fe[89ab]/.test(lower) || lower.startsWith("ff");
-    }
-    return false;
+    const family = isIP(address);
+    return family !== 0 && NON_PUBLIC.check(address, family === 4 ? "ipv4" : "ipv6");
 }
 
 function assertPublicHost(hostname: string): void {
