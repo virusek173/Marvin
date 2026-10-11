@@ -1,4 +1,4 @@
-FROM node:22.0.0-alpine
+FROM node:22-alpine
 ENV TZ=Europe/Warsaw
 WORKDIR /usr/src/app
 RUN mkdir -p src

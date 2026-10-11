@@ -47,13 +47,13 @@ describe('shortenWebCitations', () => {
 
 describe('source icons', () => {
     it('stripSystemIcons removes leading 🌐/🔗 but keeps 🖼️ and icons later in the text', () => {
-        expect(stripSystemIcons('🌐 🔗 Poznań')).toBe('Poznań');
+        expect(stripSystemIcons('🌐 🔗 📦 Poznań')).toBe('Poznań');
         expect(stripSystemIcons('🖼️ Jeż')).toBe('🖼️ Jeż');
         expect(stripSystemIcons('Mapa 🌐 świata')).toBe('Mapa 🌐 świata');
     });
 
-    it('stripSourceIcons removes all three leading icons', () => {
-        expect(stripSourceIcons('🌐 🔗 🖼️ Poznań')).toBe('Poznań');
+    it('stripSourceIcons removes all leading icons', () => {
+        expect(stripSourceIcons('🌐 🔗 📦 🖼️ Poznań')).toBe('Poznań');
         expect(stripSourceIcons('Zwykły tekst')).toBe('Zwykły tekst');
     });
 });

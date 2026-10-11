@@ -60,10 +60,10 @@ export const shortenWebCitations = (text: string): string =>
   text.replace(/\s*\(\[([^\]\n]+)\]\(https?:\/\/[^)\s]+\)\)/g, " ($1)");
 
 /** Removes the 🌐/🔗 icons the system itself puts in front of a reply, in case the model wrote them too. */
-export const stripSystemIcons = (text: string): string => text.replace(/^(?:\s*(?:🌐|🔗)\s*)+/u, "");
+export const stripSystemIcons = (text: string): string => text.replace(/^(?:\s*(?:🌐|🔗|📦)\s*)+/u, "");
 
 /** Removes any leading source icon (🌐 🔗 🖼️) from Marvin's earlier replies so the model does not imitate them in the context. */
-export const stripSourceIcons = (text: string): string => text.replace(/^(?:\s*(?:🌐|🔗|🖼\uFE0F?)\s*)+/u, "");
+export const stripSourceIcons = (text: string): string => text.replace(/^(?:\s*(?:🌐|🔗|📦|🖼\uFE0F?)\s*)+/u, "");
 
 /** Splits a long reply into Discord-sized parts, preferring paragraph, line, then word boundaries; the last part is cut if `maxParts` is exceeded. */
 export const splitForDiscord = (text: string, maxLength = 1950, maxParts = 4): string[] => {
