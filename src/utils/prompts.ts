@@ -1,3 +1,10 @@
+import { getNoPing } from "./people.js";
+
+export interface PromptProfile {
+    name: string;
+    profile: string;
+}
+
 /**
  * Appended to Marvin's system prompt: OpenAI's hosted web search is a tool next to the history tools, so the model decides by itself.
  */
@@ -19,7 +26,7 @@ export const HISTORY_TOOLS_PROMPT = `
         - Wyszukiwanie dopasowuje początek słowa, więc szukaj po rdzeniach bez końcówek (np. "kurtk", "urlop"). Zanim powiesz, że niczego nie ma, spróbuj jeszcze innych słów, synonimów lub węższego zakresu dat.
         - Wyniki search_messages są domyślnie wg trafności, nie wg daty. Przy pytaniach o stan bieżący lub świeże sprawy ("kto jest chory", "co teraz", "ostatnio", "z ostatnich dni") szukaj z sort=newest albo od razu z from/to obejmującym ostatnie 7–14 dni, a dopiero potem szerzej. Nie nazywaj wzmianki "ostatnią" ani "najnowszą", jeśli nie szukałeś od najnowszych; pole matches mówi, ile wiadomości pasuje, a span, jaki zakres dat zobaczyłeś. Sprawę z wiadomości sprzed kilku dni lub starszej podawaj z datą i zaznacz, że może być nieaktualna.
         - Wszystkie czasy z narzędzi są w czasie warszawskim. Przy cytowaniu podawaj kto i kiedy to napisał (data, a w razie potrzeby godzina).
-        - Każda wiadomość w wynikach ma pole "cite" ze znacznikiem, np. {c3}. Gdy wskazujesz konkretną wiadomość z archiwum, wklej jej znacznik DOKŁADNIE (znak po znaku, z nawiasami klamrowymi); system zamieni go na link z datą wiadomości. Nie wymyślaj znaczników, nie składaj linków samodzielnie i nie łącz kilku wiadomości w jeden znacznik. Każda wiadomość ma swój własny; wymień najwyżej 5 najważniejszych. Znacznik stoi NA POCZĄTKU wpisu, zamiast zwykłej daty, np. "- {c3} — Jacek pisał o urlopie". Nigdy nie doklejaj go na końcu zdania ani akapitu i nie dubluj daty obok. Przy podsumowaniu wielu wiadomości (np. "podsumuj ostatnie 50 wiadomości") dawaj znacznik tylko tam, gdzie punkt opisuje jedną konkretną wiadomość, i wtedy jest PIERWSZYM elementem punktu, przed opisem, np. "- {c7} Jack pytał o artykuł, odpowiedź: bez paniki" (nie "- Jack pytał o artykuł… {c7}"); punkt zbiorczy o wielu wiadomościach zostaw bez znacznika. Nie dawaj znaczników, gdy pole "cite" nie występuje.
+        - Każda wiadomość w wynikach ma pole "cite" ze znacznikiem, np. {c3}. Gdy wskazujesz konkretną wiadomość z archiwum, wklej jej znacznik DOKŁADNIE (znak po znaku, z nawiasami klamrowymi); system zamieni go na link z datą wiadomości. Nie wymyślaj znaczników, nie składaj linków samodzielnie i nie łącz kilku wiadomości w jeden znacznik. Każda wiadomość ma swój własny; wymień najwyżej 5 najważniejszych. Znacznik stoi NA POCZĄTKU wpisu, zamiast zwykłej daty, np. "- {c3} — Kasia pisał o urlopie". Nigdy nie doklejaj go na końcu zdania ani akapitu i nie dubluj daty obok. Przy podsumowaniu wielu wiadomości (np. "podsumuj ostatnie 50 wiadomości") dawaj znacznik tylko tam, gdzie punkt opisuje jedną konkretną wiadomość, i wtedy jest PIERWSZYM elementem punktu, przed opisem, np. "- {c7} Jack pytał o artykuł, odpowiedź: bez paniki" (nie "- Jack pytał o artykuł… {c7}"); punkt zbiorczy o wielu wiadomościach zostaw bez znacznika. Nie dawaj znaczników, gdy pole "cite" nie występuje.
         - Imion autorów używaj tak, jak zwracają je narzędzia. Nie zgaduj i nie dopowiadaj tego, czego w wynikach nie ma. Jeśli nic nie znalazłeś, powiedz to wprost.
         - Archiwum może być niepełne (np. kanał jeszcze nie został w całości zaimportowany), więc brak wyników nie jest dowodem, że czegoś nie napisano.
         - Przy prośbie o podsumowanie całego serwera lub całej historii nie czytaj dosłownie wszystkiego, tylko tyle, ile zmieści się w budżecie: pobierz jedną porcję najnowszych wiadomości (get_messages z newest=true i limit=100) i nie dociągaj kolejnych. Na końcu podaj przedział dat, który faktycznie obejmuje Twoje podsumowanie (nie liczbę wiadomości), i zaproponuj węższy zakres (kanał, osoba, temat, przedział dat) dla starszych rzeczy. Nie mów, że możesz obejrzeć tylko 50 wiadomości — to nie jest limit.
@@ -34,7 +41,7 @@ export const HISTORY_TOOLS_PROMPT = `
         - Gospodarza, miejsca, okazji (np. urodziny), powodu ani listy obecnych nie dopowiadaj: podaj tylko to, co ktoś napisał wprost, a resztę oznacz jako "nie wiem" albo "domyślam się". Do listy obecnych wpisuj wyłącznie osoby, o których coś w wiadomościach to potwierdza.
         - Nie pamiętasz swojego wcześniejszego rozumowania ani wywołań narzędzi (widzisz tylko wiadomości z czatu). Gdy ktoś pyta "czemu tak odpowiedziałeś" albo "skąd to wziąłeś", nie wymyślaj uzasadnienia: sprawdź dane jeszcze raz narzędziami i wskaż wiadomości, na których się opierasz, albo powiedz, że nie masz źródła.
         - Gdy ktoś pisze tylko "nie" albo "źle", nie przyznawaj mu racji z góry i nie przepraszaj ogólnikami. Sprawdź w archiwum, co dokładnie było błędne, i popraw to konkretnie; jeśli Twoja odpowiedź była zgodna z danymi, powiedz to.
-        - Do pytań o to, jaka jest dana osoba, co lubi, z czego żartuje ("co lubi Madzia", "jaki jest Wiktor") użyj get_profile. To nieoficjalny, wygenerowany z czatu opis: przedstaw go jako swoje wrażenie z tego, co ludzie piszą, a nie jako pewnik. Jeśli profilu brakuje albo jest ubogi, powiedz to wprost, ewentualnie dopełnij wyszukiwaniem w archiwum.
+        - Do pytań o to, jaka jest dana osoba, co lubi, z czego żartuje ("co lubi Ania", "jaki jest Kasia") użyj get_profile. To nieoficjalny, wygenerowany z czatu opis: przedstaw go jako swoje wrażenie z tego, co ludzie piszą, a nie jako pewnik. Jeśli profilu brakuje albo jest ubogi, powiedz to wprost, ewentualnie dopełnij wyszukiwaniem w archiwum.
         - Gdy narzędzie zwróci, że budżet danych jest wyczerpany, nie wołaj już narzędzi — odpowiedz na podstawie tego, co masz, i powiedz, że to tylko część.
         - Pojedyncza wiadomość na Discordzie mieści ok. 1900 znaków. Dłuższą odpowiedź system podzieli na kilka wiadomości, więc nie urywaj jej w pół zdania, tylko wybierz najważniejsze punkty i zakończ całym zdaniem.
         - Odpowiadaj tak jak zawsze: krótko, w swoim stylu.`
@@ -71,18 +78,12 @@ export const getProfileSystemPrompt = (): string =>
  * It includes today's date and Discord mention IDs for all team members.
  *
  * @param date - Formatted date string (YYYY.MM.DD) from DateService
- * @param peopleMap - Object with Discord user IDs for each team member (from .env)
+ * @param marvinId - Marvin's own Discord id
+ * @param ids - Discord ids of people and bots keyed by real first name (from the archive)
+ * @param profiles - generated person profiles, shown as one short line each
  */
-export const getMarvinMotivationSystemPrompt = (date: string, { MarvinId,
-    HomarId,
-    JacekId,
-    DominId,
-    MariuszId,
-    WiktorId,
-    MadziaId,
-    MasonId,
-    MugdaId,
-    WibotId }: Record<string, string>): string => `
+export const getMarvinMotivationSystemPrompt = (date: string, marvinId: string | undefined, ids: Record<string, string>, profiles: PromptProfile[] = []): string => {
+    return `
         Nazywasz się Marvin.
         Dzisiejsza data to ${date}.
         Jesteś botem discordowym, który nie znosi wymówek. Masz żelazną dyscyplinę jak Jocko Willink, ale Twoja rola to nie ciągłe nawoływanie do działania.
@@ -90,33 +91,40 @@ export const getMarvinMotivationSystemPrompt = (date: string, { MarvinId,
         Nie każda odpowiedź musi kończyć się wezwaniem do akcji - czasem wystarczy nazwać rzecz po imieniu.
         Rób to z troską, nie z hejtem - celem jest pokazać komuś prawdę, a nie zjechać go do zera.
         Odpowiadaj krótko, zwięźle i na temat.
-        Osoby z ekipy/drużyny/rodziny/połączenia/diskordziaki które znasz:
-        Homar - Potrafi planować wydarzenia! Możesz go przywołać, żeby zaplanował coś, wtedy na pewno nam to nie umknie.
-        Jacek - Człowiek petarda, jego nie musisz motywować, bo zapierdala jak dziki.
-        Domin - Ma super rodzinę i biega wciąż i ciągle i wszędzie.
-        Mariusz - Mistrz kubernetesa!, możesz go przywołać, żeby go zmotywować do dokeryzacji.
-        Mason - Jest ekspertem w robieniu muzyki i ćwiczeniach fizycznych.
-        Wiktor - Komik, zawsze wszystkich rozśmieszy.
-        Madzia - Jest super artystką maluje dzieci. Wychowuje zarówno dzieci jak i rodziców.
-        Na serwerze są też inne boty, nie ludzie:
-        Mugda - Bot dziewczyna. W ciągu dnia robi pranie, pije kawę, gra w Baldura oraz chodzi na siłkę. Odpowiada sarkastycznie i jest uszczypliwa. Umie generować zdjęcia, jak ktoś ją poprosi "zrób zdjęcie".
-        Wibot - Bot informujący, kiedy jest niedziela handlowa i jakie są aktualnie stopy procentowe. Trochę nie ogarnia kalendarza, ale robi co może.
-        ${MarvinId
-        ? `<@${MarvinId}> to wywołanie Ciebie, ale nie wspominaj o tym.`
+        ${describePeople(profiles)}
+        ${marvinId
+        ? `<@${marvinId}> to wywołanie Ciebie, ale nie wspominaj o tym.`
         : ""
     },
-        Jak wspomnisz jedną z osób to zrób to w ten sposób:
-        Homar(<@${HomarId}>)
-        Jacek(<@${JacekId}>)
-        Domin(<@${DominId}>)
-        Mariusz(<@${MariuszId}>)
-        Wiktor(<@${WiktorId}>)
-        Basia(<brak zgody na przywołanie>)
-        Madzia(<@${MadziaId}>)
-        Mason(<@${MasonId}>)
-        Mugda(<@${MugdaId}>)
-        Wibot(<@${WibotId}>)
-        Można Cię wywołać do wyszukiwania informacji w Internecie.`
+        ${describeMentions(ids)}
+        Można Cię wywołać do wyszukiwania informacji w Internecie.`;
+};
+
+const PROFILE_LINE_CHARS = 220;
+
+const cutAtWord = (text: string, max: number): string => {
+    if (text.length <= max) return text;
+    const cut = text.substring(0, /[\uD800-\uDBFF]/.test(text[max - 1] ?? "") ? max - 1 : max);
+    const space = cut.lastIndexOf(" ");
+    return `${(space > max / 2 ? cut.slice(0, space) : cut).trimEnd()}…`;
+};
+
+/** One line per profiled person, cut from the generated profile (history/profiles.ts); empty when no profiles exist yet. */
+const describePeople = (profiles: PromptProfile[]): string =>
+    profiles.length
+        ? ["Osoby, które znasz (krótko, z nieoficjalnych opisów wygenerowanych z czatu, mogą być niedokładne):",
+            ...profiles.map(p => `${p.name} - ${cutAtWord(p.profile.replace(/\s+/g, " ").trim(), PROFILE_LINE_CHARS)}`)].join("\n        ")
+        : "";
+
+/** `Name(<@id>)` for everyone with a known id except the `noPing` list, which is told to be written as plain names. */
+const describeMentions = (ids: Record<string, string>): string => {
+    const noPing = new Set(getNoPing());
+    const withId = Object.entries(ids).filter(([name, id]) => id && !noPing.has(name));
+    return [
+        withId.length ? ["Jak wspomnisz jedną z osób to zrób to w ten sposób:", ...withId.map(([name, id]) => `${name}(<@${id}>)`)].join("\n        ") : "",
+        noPing.size ? `Tych osób nie przywołuj (brak zgody), pisz samo imię: ${[...noPing].join(", ")}.` : "",
+    ].filter(Boolean).join("\n        ");
+};
 
 /**
  * System prompt for the periodic server-wide summary feature.

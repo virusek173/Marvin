@@ -17,7 +17,7 @@ const row = (over: Partial<ArchiveRow> = {}): ArchiveRow => {
         channelId: "c1",
         parentId: null,
         authorId: "u1",
-        authorName: "Vajrusek",
+        authorName: "AdamNick",
         isBot: false,
         content: `wiadomość ${seq}`,
         embedsText: "",
@@ -77,7 +77,7 @@ describe("HistoryQuery", () => {
             const res = q.search({ query: "zolta kurtk" });
             expect(res.count).toBe(1);
             expect(res.timezone).toBe("Europe/Warsaw");
-            expect(res.messages[0]).toMatchObject({ author: "Jacek", channel: "ogolny", time: "2025.03.10 12:00" });
+            expect(res.messages[0]).toMatchObject({ author: "Adam", channel: "ogolny", time: "2025.03.10 12:00" });
             expect(q.search({ query: "kurtk" }).count).toBe(1);
         });
 
@@ -122,13 +122,13 @@ describe("HistoryQuery", () => {
         });
 
         it("filters by author given as a real name (all of that person's usernames), channel and dates", () => {
-            db.insertLive(row({ content: "pizza jacek", authorName: "Vajrusek" }));
-            db.insertLive(row({ content: "pizza jacek stary nick", authorName: "Crook", authorId: "u9" }));
-            db.insertLive(row({ content: "pizza domin", authorName: "Hardik", authorId: "u2" }));
+            db.insertLive(row({ content: "pizza adam", authorName: "AdamNick" }));
+            db.insertLive(row({ content: "pizza adam stary nick", authorName: "AdamAlt", authorId: "u9" }));
+            db.insertLive(row({ content: "pizza cezary", authorName: "CezaryNick", authorId: "u2" }));
             db.insertLive(row({ content: "pizza memy", channelId: "c2" }));
-            expect(q.search({ query: "pizza", author: "jacek" }).messages.map(m => m.text).sort())
-                .toEqual(["pizza jacek", "pizza jacek stary nick", "pizza memy"]);
-            expect(q.search({ query: "pizza", author: "Domin" }).count).toBe(1);
+            expect(q.search({ query: "pizza", author: "adam" }).messages.map(m => m.text).sort())
+                .toEqual(["pizza adam", "pizza adam stary nick", "pizza memy"]);
+            expect(q.search({ query: "pizza", author: "Cezary" }).count).toBe(1);
             expect(q.search({ query: "pizza", channel: "#memy" }).count).toBe(1);
             expect(q.search({ query: "pizza", channel: "nieistnieje" }).note).toMatch(/Nie znam kanału/);
             expect(q.search({ query: "pizza", from: "2025-03-11" }).count).toBe(0);
@@ -137,22 +137,22 @@ describe("HistoryQuery", () => {
         });
 
         it("skips bot messages unless an author or include_bots is given", () => {
-            db.insertLive(row({ content: "wyjazd do Basi planowany", authorName: "Vajrusek" }));
-            db.insertLive(row({ content: "wyjazd do Basi w bajce", authorId: MARVIN, authorName: "Marvin", isBot: true }));
-            expect(q.search({ query: "wyjazd" }).messages.map(m => m.text)).toEqual(["wyjazd do Basi planowany"]);
+            db.insertLive(row({ content: "wyjazd do Ewy planowany", authorName: "AdamNick" }));
+            db.insertLive(row({ content: "wyjazd do Ewy w bajce", authorId: MARVIN, authorName: "Marvin", isBot: true }));
+            expect(q.search({ query: "wyjazd" }).messages.map(m => m.text)).toEqual(["wyjazd do Ewy planowany"]);
             expect(q.search({ query: "wyjazd", includeBots: true }).count).toBe(2);
-            expect(q.search({ query: "wyjazd", author: "Marvin" }).messages.map(m => m.text)).toEqual(["wyjazd do Basi w bajce"]);
+            expect(q.search({ query: "wyjazd", author: "Marvin" }).messages.map(m => m.text)).toEqual(["wyjazd do Ewy w bajce"]);
         });
 
         it("falls back to any of the words when no message has all of them", () => {
-            db.insertLive(row({ content: "Basia jedzie nad morze" }));
+            db.insertLive(row({ content: "Ewa jedzie nad morze" }));
             db.insertLive(row({ content: "wyjazd jest w piątek" }));
-            const res = q.search({ query: "wyjazd Basi" });
+            const res = q.search({ query: "wyjazd Ewa" });
             expect(res.count).toBe(2);
             expect(res.note).toMatch(/którymkolwiek/);
-            db.insertLive(row({ content: "wyjazd Basi w sobotę" }));
-            const exact = q.search({ query: "wyjazd Basi" });
-            expect(exact.messages.map(m => m.text)).toEqual(["wyjazd Basi w sobotę"]);
+            db.insertLive(row({ content: "wyjazd Ewa w sobotę" }));
+            const exact = q.search({ query: "wyjazd Ewa" });
+            expect(exact.messages.map(m => m.text)).toEqual(["wyjazd Ewa w sobotę"]);
             expect(exact.note).toBeUndefined();
         });
 
@@ -193,10 +193,10 @@ describe("HistoryQuery", () => {
         });
 
         it("replaces mentions with names", () => {
-            db.insertLive(row({ authorId: "123", authorName: "Hardik", content: "elo" }));
+            db.insertLive(row({ authorId: "123", authorName: "CezaryNick", content: "elo" }));
             db.insertLive(row({ content: `<@123> i <@${MARVIN}> patrzcie na <#222> oraz <@555>` }));
             const res = q.search({ query: "patrzcie" });
-            expect(res.messages[0].text).toBe("@Domin i @Marvin patrzcie na #memy oraz @ktoś");
+            expect(res.messages[0].text).toBe("@Cezary i @Marvin patrzcie na #memy oraz @ktoś");
         });
     });
 
@@ -383,14 +383,14 @@ describe("HistoryQuery", () => {
         const keys = (res: { groups: { key: string; count: number }[] }) => res.groups.map(g => `${g.key}=${g.count}`);
 
         it("counts per author, merging usernames of one person and skipping bots by default", () => {
-            for (let i = 0; i < 3; i++) db.insertLive(row({ authorId: "u1", authorName: "Vajrusek" }));
-            for (let i = 0; i < 2; i++) db.insertLive(row({ authorId: "u2", authorName: "Madzia" }));
+            for (let i = 0; i < 3; i++) db.insertLive(row({ authorId: "u1", authorName: "AdamNick" }));
+            for (let i = 0; i < 2; i++) db.insertLive(row({ authorId: "u2", authorName: "Beata" }));
             db.insertLive(row({ authorId: MARVIN, authorName: "Marvin", isBot: true }));
-            db.insertLive(row({ authorId: "u1", authorName: "Vajrusek", isTechnical: true }));
+            db.insertLive(row({ authorId: "u1", authorName: "AdamNick", isTechnical: true }));
 
             const res = q.stats({ groupBy: "author" });
             expect(res.total).toBe(5);
-            expect(keys(res)).toEqual(["Jacek=3", "Madzia=2"]);
+            expect(keys(res)).toEqual(["Adam=3", "Beata=2"]);
             expect(res.groups[0].share).toBe(60);
 
             const withBots = q.stats({ groupBy: "author", includeBots: true });
@@ -452,33 +452,33 @@ describe("HistoryQuery", () => {
         });
 
         it("filters replies by the author of the replied-to message", () => {
-            db.insertLive(row({ id: "m1", authorId: "u1", authorName: "Vajrusek" }));
-            db.insertLive(row({ id: "m2", authorId: "u2", authorName: "Madzia" }));
-            db.insertLive(row({ authorId: "u2", authorName: "Madzia", replyToId: "m1" }));
-            db.insertLive(row({ authorId: "u2", authorName: "Madzia", replyToId: "m1" }));
-            db.insertLive(row({ authorId: "u1", authorName: "Vajrusek", replyToId: "m2" }));
-            db.insertLive(row({ authorId: "u2", authorName: "Madzia", replyToId: "nie-ma" }));
-            expect(q.stats({ author: "Madzia", replyTo: "Jacek" }).total).toBe(2);
-            expect(q.stats({ author: "Jacek", replyTo: "Madzia" }).total).toBe(1);
-            expect(q.stats({ replyTo: "Jacek", groupBy: "author" }).groups.map(g => g.key)).toEqual(["Madzia"]);
+            db.insertLive(row({ id: "m1", authorId: "u1", authorName: "AdamNick" }));
+            db.insertLive(row({ id: "m2", authorId: "u2", authorName: "Beata" }));
+            db.insertLive(row({ authorId: "u2", authorName: "Beata", replyToId: "m1" }));
+            db.insertLive(row({ authorId: "u2", authorName: "Beata", replyToId: "m1" }));
+            db.insertLive(row({ authorId: "u1", authorName: "AdamNick", replyToId: "m2" }));
+            db.insertLive(row({ authorId: "u2", authorName: "Beata", replyToId: "nie-ma" }));
+            expect(q.stats({ author: "Beata", replyTo: "Adam" }).total).toBe(2);
+            expect(q.stats({ author: "Adam", replyTo: "Beata" }).total).toBe(1);
+            expect(q.stats({ replyTo: "Adam", groupBy: "author" }).groups.map(g => g.key)).toEqual(["Beata"]);
             expect(q.stats({ replyTo: "Nikt" }).total).toBe(0);
-            expect(q.range({ author: "Madzia", replyTo: "Jacek" }).messages).toHaveLength(2);
+            expect(q.range({ author: "Beata", replyTo: "Adam" }).messages).toHaveLength(2);
         });
 
         it("adds average message length only with withLength (or sort length), ignoring empty text", () => {
-            db.insertLive(row({ authorId: "u1", authorName: "Vajrusek", content: "ala ma kota" }));
-            db.insertLive(row({ authorId: "u1", authorName: "Vajrusek", content: "ok" }));
-            db.insertLive(row({ authorId: "u1", authorName: "Vajrusek", content: "", attachmentsText: "zdjęcie" }));
-            db.insertLive(row({ authorId: "u2", authorName: "Madzia", content: "a" }));
+            db.insertLive(row({ authorId: "u1", authorName: "AdamNick", content: "ala ma kota" }));
+            db.insertLive(row({ authorId: "u1", authorName: "AdamNick", content: "ok" }));
+            db.insertLive(row({ authorId: "u1", authorName: "AdamNick", content: "", attachmentsText: "zdjęcie" }));
+            db.insertLive(row({ authorId: "u2", authorName: "Beata", content: "a" }));
 
             expect(q.stats({ groupBy: "author" }).groups[0]).not.toHaveProperty("avgChars");
 
             const res = q.stats({ groupBy: "author", withLength: true });
             expect(res).toMatchObject({ total: 4, textMessages: 3, avgChars: 4.7, avgWords: 1.7 });
-            expect(res.groups.find(g => g.key === "Jacek")).toMatchObject({ count: 3, textMessages: 2, avgChars: 6.5, avgWords: 2 });
+            expect(res.groups.find(g => g.key === "Adam")).toMatchObject({ count: 3, textMessages: 2, avgChars: 6.5, avgWords: 2 });
 
             const sorted = q.stats({ groupBy: "author", sort: "length" });
-            expect(sorted.groups.map(g => g.key)).toEqual(["Jacek", "Madzia"]);
+            expect(sorted.groups.map(g => g.key)).toEqual(["Adam", "Beata"]);
             expect(sorted.groups[1]).toMatchObject({ avgChars: 1, avgWords: 1 });
         });
 
@@ -490,6 +490,31 @@ describe("HistoryQuery", () => {
             expect(q.archiveStart()).toBe("15.01.2021");
             open(["secret"]);
             expect(q.archiveStart()).toBe("01.06.2022");
+        });
+    });
+
+    describe("personIds", () => {
+        const many = (n: number, over: Partial<ArchiveRow>) => { for (let i = 0; i < n; i++) db.insertLive(row(over)); };
+        const now = BASE + 86_400_000;
+
+        it("maps nicks to first names, merges a person's nicks and picks the id with the most messages", () => {
+            many(5, { authorId: "u1", authorName: "AdamNick" });
+            many(3, { authorId: "u1", authorName: "AdamAlt" });
+            many(2, { authorId: "u9", authorName: "AdamNick" });
+            many(6, { authorId: "u2", authorName: "Zbyszek" });
+            expect(q.personIds({ minMessages: 1, now })).toEqual({ Adam: "u1", Zbyszek: "u2" });
+        });
+
+        it("skips Marvin, technical and excluded-channel messages, quiet and inactive authors", () => {
+            many(5, { authorId: MARVIN, authorName: "Marvin", isBot: true });
+            many(5, { authorId: "u3", authorName: "BeataNick", isTechnical: true });
+            many(5, { authorId: "u4", authorName: "CezaryNick", channelId: "secret" });
+            many(2, { authorId: "u5", authorName: "DorotaNick" });
+            many(5, { authorId: "u6", authorName: "EwaNick", createdAt: BASE - 400 * 86_400_000 });
+            many(5, { authorId: "u7", authorName: "Deleted User" });
+            many(5, { authorId: "u8", authorName: "FilipNick" });
+            open(["secret"]);
+            expect(q.personIds({ minMessages: 5, activeDays: 180, now })).toEqual({ Filip: "u8" });
         });
     });
 
@@ -541,17 +566,17 @@ describe("HistoryQuery", () => {
         });
 
         it("adds received reaction counts with withReactions and sorts by them", () => {
-            add({ authorId: "u1", authorName: "Vajrusek" }, [{ emoji: "👍", count: 2 }]);
-            add({ authorId: "u2", authorName: "Madzia" }, [{ emoji: "😂", count: 5 }, { emoji: "👍", count: 1 }]);
-            add({ authorId: "u2", authorName: "Madzia" });
+            add({ authorId: "u1", authorName: "AdamNick" }, [{ emoji: "👍", count: 2 }]);
+            add({ authorId: "u2", authorName: "Beata" }, [{ emoji: "😂", count: 5 }, { emoji: "👍", count: 1 }]);
+            add({ authorId: "u2", authorName: "Beata" });
 
             expect(q.stats({ groupBy: "author" }).groups[0]).not.toHaveProperty("reactions");
             const res = q.stats({ groupBy: "author", sort: "reactions" });
             expect(res.reactions).toBe(8);
-            expect(res.groups.map(g => [g.key, g.reactions])).toEqual([["Madzia", 6], ["Jacek", 2]]);
+            expect(res.groups.map(g => [g.key, g.reactions])).toEqual([["Beata", 6], ["Adam", 2]]);
 
             const onlyLaugh = q.stats({ groupBy: "author", withReactions: true, reaction: "😂" });
-            expect(onlyLaugh.groups).toEqual([expect.objectContaining({ key: "Madzia", reactions: 5 })]);
+            expect(onlyLaugh.groups).toEqual([expect.objectContaining({ key: "Beata", reactions: 5 })]);
         });
 
         it("renders reactions on messages and server emoji as :name:", () => {

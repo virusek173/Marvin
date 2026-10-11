@@ -17,7 +17,7 @@ describe("buildHistoryTools", () => {
         db = new HistoryDb(file);
         db.upsertChannel("c1", "ogolny", null);
         db.insertLive({
-            id: "1", channelId: "c1", parentId: null, authorId: "u1", authorName: "Vajrusek", isBot: false,
+            id: "1", channelId: "c1", parentId: null, authorId: "u1", authorName: "AdamNick", isBot: false,
             content: "jedziemy na urlop w sierpniu", embedsText: "", attachmentsText: "", replyToId: null, type: 0,
             isTechnical: false, createdAt: Date.UTC(2025, 2, 10, 11, 0),
         });
@@ -40,29 +40,29 @@ describe("buildHistoryTools", () => {
 
     it("get_stats maps arguments and ignores junk", async () => {
         const res: any = await tool("get_stats").run({ group_by: "author", limit: "many", sort: 5 });
-        expect(res).toMatchObject({ total: 1, groupBy: "author", groups: [{ key: "Jacek", count: 1 }] });
+        expect(res).toMatchObject({ total: 1, groupBy: "author", groups: [{ key: "Adam", count: 1 }] });
         expect(((await tool("get_stats").run({ group_by: "DROP TABLE" })) as any).groupBy).toBe("none");
         expect(((await tool("get_stats").run(null)) as any).total).toBe(1);
     });
 
     it("get_stats passes with_length and reply_to_author through", async () => {
         db.insertLive({
-            id: "2", channelId: "c1", parentId: null, authorId: "u2", authorName: "Madzia", isBot: false,
+            id: "2", channelId: "c1", parentId: null, authorId: "u2", authorName: "Beata", isBot: false,
             content: "super pomysł", embedsText: "", attachmentsText: "", replyToId: "1", type: 0,
             isTechnical: false, createdAt: Date.UTC(2025, 2, 10, 11, 5),
         });
         const lengths: any = await tool("get_stats").run({ group_by: "author", with_length: true });
-        expect(lengths.groups.find((g: any) => g.key === "Madzia")).toMatchObject({ avgChars: 12, avgWords: 2 });
+        expect(lengths.groups.find((g: any) => g.key === "Beata")).toMatchObject({ avgChars: 12, avgWords: 2 });
         expect(((await tool("get_stats").run({ group_by: "author" })) as any).groups[0]).not.toHaveProperty("avgChars");
-        expect(((await tool("get_stats").run({ author: "Madzia", reply_to_author: "Jacek" })) as any).total).toBe(1);
-        expect(((await tool("get_stats").run({ author: "Jacek", reply_to_author: "Madzia" })) as any).total).toBe(0);
-        expect(((await tool("get_messages").run({ reply_to_author: "Jacek" })) as any).messages).toHaveLength(1);
+        expect(((await tool("get_stats").run({ author: "Beata", reply_to_author: "Adam" })) as any).total).toBe(1);
+        expect(((await tool("get_stats").run({ author: "Adam", reply_to_author: "Beata" })) as any).total).toBe(0);
+        expect(((await tool("get_messages").run({ reply_to_author: "Adam" })) as any).messages).toHaveLength(1);
     });
 
     it("get_profile returns stored profiles and tolerates junk arguments", async () => {
-        db.upsertProfile({ name: "Jacek", summary: "Lubi rowery.", messageCount: 40, lastSeq: 1, updatedAt: Date.UTC(2025, 2, 11, 12, 0) });
-        const one: any = await tool("get_profile").run({ person: "Vajrusek" });
-        expect(one).toMatchObject({ count: 1, profiles: [{ name: "Jacek", profile: "Lubi rowery.", basedOnMessages: 40, updated: "2025.03.11" }] });
+        db.upsertProfile({ name: "Adam", summary: "Lubi rowery.", messageCount: 40, lastSeq: 1, updatedAt: Date.UTC(2025, 2, 11, 12, 0) });
+        const one: any = await tool("get_profile").run({ person: "AdamNick" });
+        expect(one).toMatchObject({ count: 1, profiles: [{ name: "Adam", profile: "Lubi rowery.", basedOnMessages: 40, updated: "2025.03.11" }] });
         expect(((await tool("get_profile").run(null)) as any).count).toBe(1);
         expect(((await tool("get_profile").run({ person: 5 })) as any).count).toBe(1);
     });
@@ -85,9 +85,9 @@ describe("buildHistoryTools", () => {
     });
 
     it("search_messages passes arguments through and tolerates junk", async () => {
-        const res: any = await tool("search_messages").run({ query: "urlop", author: "Jacek", limit: "many" });
+        const res: any = await tool("search_messages").run({ query: "urlop", author: "Adam", limit: "many" });
         expect(res.count).toBe(1);
-        expect(res.messages[0].author).toBe("Jacek");
+        expect(res.messages[0].author).toBe("Adam");
         expect(((await tool("search_messages").run(null)) as any).note).toBeDefined();
     });
 

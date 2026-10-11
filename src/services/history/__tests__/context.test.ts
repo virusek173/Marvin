@@ -12,7 +12,7 @@ const row = (over: Partial<ArchiveRow> = {}): ArchiveRow => {
         channelId: "c1",
         parentId: null,
         authorId: "u1",
-        authorName: "Vajrusek",
+        authorName: "AdamNick",
         isBot: false,
         content: `msg ${seq}`,
         embedsText: "",
@@ -61,7 +61,7 @@ describe("HistoryContext", () => {
         db.insertLive(row({ authorId: "bot2", authorName: "Mugda", isBot: true, content: "pranie" }));
         const [human, marvin, otherBot] = make().getContext("c1");
         expect(human.role).toBe("user");
-        expect(human.content).toMatch(/^Jacek \(\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}\): hej$/);
+        expect(human.content).toMatch(/^Adam \(\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}\): hej$/);
         expect(marvin.role).toBe("assistant");
         expect(marvin.content).toMatch(/^Marvin \(.+\): no cześć$/);
         expect(otherBot.role).toBe("user");
@@ -106,7 +106,7 @@ describe("HistoryContext", () => {
         const setup = () => {
             db.insertLive(row({ id: "900", channelId: "parent", content: "Grecja dużo światła", createdAt: 1_700_000_000_000 }));
             db.insertLive(row({ id: "901", channelId: "900", parentId: "parent", content: "", type: 21, createdAt: 1_700_000_001_000 }));
-            db.insertLive(row({ id: "902", channelId: "900", parentId: "parent", content: "o czym mówi Jacek?", createdAt: 1_700_000_002_000 }));
+            db.insertLive(row({ id: "902", channelId: "900", parentId: "parent", content: "o czym mówi Adam?", createdAt: 1_700_000_002_000 }));
         };
 
         it("puts the parent-channel message the thread was started from first", () => {
@@ -114,7 +114,7 @@ describe("HistoryContext", () => {
             const ctx = make().getContext("900", "parent");
             expect(ctx.map(m => m.content)).toEqual([
                 expect.stringContaining("Grecja dużo światła"),
-                expect.stringContaining("o czym mówi Jacek?"),
+                expect.stringContaining("o czym mówi Adam?"),
             ]);
         });
 
@@ -122,7 +122,7 @@ describe("HistoryContext", () => {
             setup();
             const ctx = make([], 1).getContext("900", "parent");
             expect(ctx).toHaveLength(1);
-            expect(ctx[0].content).toContain("o czym mówi Jacek?");
+            expect(ctx[0].content).toContain("o czym mówi Adam?");
         });
 
         it("adds nothing for a regular channel", () => {

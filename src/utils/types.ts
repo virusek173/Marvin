@@ -14,22 +14,8 @@ export interface UsernameToNameMap {
     [discordGlobalName: string]: string;
 }
 
-/**
- * Team member configuration for Marvin's social context.
- * IDs come from .env and are injected into the system prompt.
- */
-export interface PeopleMap {
-    MarvinId: DiscordId;
-    HomarId: DiscordId;
-    JacekId: DiscordId;
-    DominId: DiscordId;
-    MariuszId: DiscordId;
-    WiktorId: DiscordId;
-    MadziaId: DiscordId;
-    MasonId: DiscordId;
-    MugdaId: DiscordId;
-    WibotId: DiscordId;
-}
+/** Discord ids keyed by real first name, read from the message archive (HistoryQuery.personIds). */
+export type PeopleMap = Record<string, DiscordId>;
 
 /**
  * Cron schedule keys used in index.ts.
