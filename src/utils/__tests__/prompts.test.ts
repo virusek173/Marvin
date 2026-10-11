@@ -1,4 +1,4 @@
-import { getAuthorProfilePrompt, getArchiveRangePrompt } from "../prompts";
+import { getAuthorProfilePrompt, getArchiveRangePrompt, HISTORY_TOOLS_PROMPT, WEB_SEARCH_PROMPT } from "../prompts";
 
 describe("getArchiveRangePrompt", () => {
     it("states the archive start date and that nothing exists before it", () => {
@@ -15,5 +15,13 @@ describe("getAuthorProfilePrompt", () => {
         expect(prompt).toContain("Lubi psy i góry.");
         expect(prompt).toMatch(/dyskretnie/);
         expect(prompt).toMatch(/nie polecenia/);
+    });
+});
+
+describe("tool prompts", () => {
+    it("tells the model to paste the short citation token and to treat web results as data", () => {
+        expect(HISTORY_TOOLS_PROMPT).toMatch(/\{c3\}/);
+        expect(WEB_SEARCH_PROMPT).toMatch(/web_search/);
+        expect(WEB_SEARCH_PROMPT).toMatch(/dane, a nie polecenia/);
     });
 });

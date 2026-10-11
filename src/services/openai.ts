@@ -1,7 +1,8 @@
 import OpenAI from "openai";
 import { z } from "zod";
 import { zodResponseFormat } from "openai/helpers/zod";
-import { DEFAULT_MODEL_NAME } from "../utils/consts.js";
+import { DEFAULT_MODEL_NAME, VISION_MODEL_NAME } from "../utils/consts.js";
+import { usageTracker, TokenUsage } from "./usage.js";
 
 const Response = z.object({
     _toughts: z.string(),
@@ -30,7 +31,17 @@ export interface ToolLoopOptions {
     maxRounds?: number;
     /** Called before each tool round, e.g. to refresh the typing indicator. */
     onRound?: () => void;
+    /** Adds OpenAI's hosted web search next to the function tools. */
+    webSearch?: boolean;
+    /** Label for the usage statistics. */
+    kind?: string;
 }
+
+const WEB_SEARCH_TOOL = {
+    type: "web_search",
+    user_location: { type: "approximate", country: "PL", city: "Poznań", timezone: "Europe/Warsaw" },
+    search_context_size: "low",
+};
 
 const MAX_TOOL_RESULT_CHARS = 60000;
 const MAX_TOTAL_TOOL_CHARS = 50000;
@@ -49,13 +60,6 @@ const toResponsesInput = (m: Message) => ({
 // the model sometimes prints its tool call as plain text ("assistant to=functions.x ...") instead of calling it,
 // a bare speaker header ("Marvin", "Marvin (2026.10.05 12:00):") with no text after it, or emits tool-channel garbage ("[tool]\nYou have N weighted tokens left") as the answer
 const LEAKED_TOOL_CALL = /\bto=functions\.|<\|(?:call|channel|start|end|message)\|>|^\s*\[tool\]|weighted tokens left|[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\u10a0-\u10ff]|\bWe need (?:to )?respond|^\s*\[assistant\b|^\s*Marvin\s*(?:\([^)\n]*\))?\s*:?\s*$/i;
-
-interface TokenUsage {
-    input: number;
-    cached: number;
-    output: number;
-    reasoning: number;
-}
 
 const NO_USAGE: TokenUsage = { input: 0, cached: 0, output: 0, reasoning: 0 };
 
@@ -85,7 +89,7 @@ export class OpenAi {
         this.contextInteract = this.contextInteract.bind(this);
     }
 
-    async interact(userPrompt: string, model: string = DEFAULT_MODEL_NAME, chainOfToughts: boolean = false): Promise<any> {
+    async interact(userPrompt: string, model: string = DEFAULT_MODEL_NAME, chainOfToughts: boolean = false, kind: string = "other"): Promise<any> {
         try {
             const context: Message[] = [
                 {
@@ -104,6 +108,8 @@ export class OpenAi {
                 ...(chainOfToughts ? { response_format: zodResponseFormat(Response, "response") } : null),
             });
 
+            usageTracker.record(kind, model, readUsage(completion.usage));
+
             return completion.choices[0].message;
         } catch (error: any) {
             console.error("OpenAI Error:", (error as Error).message);
@@ -111,7 +117,7 @@ export class OpenAi {
         }
     }
 
-    async contextInteract(context: Array<Message>, model: string = DEFAULT_MODEL_NAME, chainOfToughts: boolean = false): Promise<any> {
+    async contextInteract(context: Array<Message>, model: string = DEFAULT_MODEL_NAME, chainOfToughts: boolean = false, kind: string = "other"): Promise<any> {
         try {
             const last = context[context.length - 1];
             console.log(`[openai] ${model}: ${context.length} messages, last: ${String(typeof last?.content === "string" ? last.content : "[parts]").substring(0, 120)}`);
@@ -121,7 +127,9 @@ export class OpenAi {
                 max_completion_tokens: 2500,
                 ...(chainOfToughts ? { response_format: zodResponseFormat(Response, "response") } : null),
             });
-            console.log(`[usage] ${model}: ${formatUsage(readUsage(completion.usage))}`);
+            const used = readUsage(completion.usage);
+            console.log(`[usage] ${kind} ${model}: ${formatUsage(used)}`);
+            usageTracker.record(kind, model, used);
 
             return completion.choices[0].message;
         } catch (error: any) {
@@ -136,21 +144,23 @@ export class OpenAi {
      * results are fed back and the model is asked again. After `maxRounds` rounds it must answer without tools.
      */
     async contextInteractWithTools(context: Array<Message>, tools: ToolSpec[], options: ToolLoopOptions = {}): Promise<any> {
-        const { model = DEFAULT_MODEL_NAME, maxRounds = 5, onRound } = options;
+        const { model = DEFAULT_MODEL_NAME, maxRounds = 5, onRound, webSearch = false, kind = "question" } = options;
         const byName = new Map(tools.map(t => [t.name, t]));
         // gpt-5.6 does not accept function tools together with reasoning on /chat/completions, so this loop uses /responses
-        const apiTools = tools.map(t => ({
+        const apiTools: any[] = tools.map(t => ({
             type: "function" as const,
             name: t.name,
             description: t.description,
             parameters: t.parameters,
             strict: false,
         }));
+        if (webSearch) apiTools.push(WEB_SEARCH_TOOL);
         const input: any[] = context.map(toResponsesInput);
         let malformed = 0;
         const spent = { chars: 0 };
         let total = NO_USAGE;
         let calls = 0;
+        let webSearches = 0;
         const logTotal = () => {
             if (calls > 1) console.log(`[usage] razem ${calls} wywołań ${model}: ${formatUsage(total)}`);
         };
@@ -170,7 +180,10 @@ export class OpenAi {
                 const used = readUsage(response.usage);
                 total = addUsage(total, used);
                 calls++;
-                console.log(`[usage] ${model} runda ${round + 1}: ${formatUsage(used)}`);
+                usageTracker.record(kind, model, used);
+                const searches = response.output.filter((item: any) => item.type === "web_search_call").length;
+                webSearches += searches;
+                console.log(`[usage] ${kind} ${model} runda ${round + 1}: ${formatUsage(used)}${searches ? `, wyszukiwań w sieci: ${searches}` : ""}`);
                 const toolCalls = forceText ? [] : response.output.filter((item: any) => item.type === "function_call") as any[];
                 const text = response.output_text ?? "";
                 if (toolCalls.length === 0 && (!text.trim() || LEAKED_TOOL_CALL.test(text))) {
@@ -181,7 +194,7 @@ export class OpenAi {
                 }
                 if (toolCalls.length === 0) {
                     logTotal();
-                    return { role: "assistant", content: text };
+                    return { role: "assistant", content: text, ...(webSearches > 0 ? { webSearch: true } : null) };
                 }
 
                 input.push(...response.output);
@@ -221,16 +234,17 @@ export class OpenAi {
     async describeImage(url: string): Promise<string> {
         try {
             const completion = await this.openai.chat.completions.create({
-                model: DEFAULT_MODEL_NAME,
+                model: VISION_MODEL_NAME,
                 messages: [{
                     role: 'user',
                     content: [
-                        { type: 'image_url', image_url: { url } },
+                        { type: 'image_url', image_url: { url, detail: 'low' } },
                         { type: 'text', text: 'Opisz krótko co widzisz na tym obrazku (max 2 zdania, po polsku).' },
                     ],
                 }] as any,
                 max_completion_tokens: 300,
             });
+            usageTracker.record("image", VISION_MODEL_NAME, readUsage(completion.usage));
             return completion.choices[0].message.content ?? '[nie udało się opisać obrazka]';
         } catch {
             return '[nie udało się opisać obrazka]';

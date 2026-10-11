@@ -4,6 +4,9 @@ jest.mock("openai", () => ({
     default: jest.fn().mockImplementation(() => ({ responses: { create } })),
 }));
 
+const record = jest.fn();
+jest.mock("../usage", () => ({ usageTracker: { record: (...args: unknown[]) => record(...args) } }));
+
 import { OpenAi, ToolSpec } from "../openai";
 
 const call = (id: string, name: string, args: unknown) => ({ type: "function_call", call_id: id, name, arguments: JSON.stringify(args) });
@@ -21,6 +24,7 @@ describe("OpenAi.contextInteractWithTools", () => {
 
     beforeEach(() => {
         create.mockReset();
+        record.mockReset();
         (search.run as jest.Mock).mockClear();
         jest.spyOn(console, "log").mockImplementation(() => {});
         jest.spyOn(console, "warn").mockImplementation(() => {});
@@ -70,6 +74,39 @@ describe("OpenAi.contextInteractWithTools", () => {
         expect(lines[0]).toContain("runda 1: wejście 1000 (z cache 200), wyjście 50 (w tym rozumowanie 30)");
         expect(lines[2]).toContain("razem 2 wywołań");
         expect(lines[2]).toContain("wejście 2500 (z cache 1100), wyjście 170 (w tym rozumowanie 110)");
+    });
+
+    it("adds hosted web search next to the function tools only on request, and ignores its output items", async () => {
+        create.mockResolvedValueOnce(answer("ok"));
+        const plain = await ai().contextInteractWithTools([{ role: "user", content: "x" }], [search]);
+        expect(plain).toEqual({ role: "assistant", content: "ok" });
+        expect(create.mock.calls[0][0].tools.map((t: any) => t.type)).toEqual(["function"]);
+
+        create.mockReset();
+        create
+            .mockResolvedValueOnce({ output: [{ type: "web_search_call", id: "w1", status: "completed" }, call("c1", "search", {})], output_text: "" })
+            .mockResolvedValueOnce({ output: [{ type: "web_search_call", id: "w2" }, { type: "message" }], output_text: "słonecznie" });
+        const res = await ai().contextInteractWithTools([{ role: "user", content: "pogoda" }], [search], { webSearch: true });
+        expect(res.content).toBe("słonecznie");
+        expect(res.webSearch).toBe(true);
+        expect(create.mock.calls[0][0].tools.map((t: any) => t.type)).toEqual(["function", "web_search"]);
+        expect(search.run).toHaveBeenCalledTimes(1);
+    });
+
+    it("works with web search alone (no function tools)", async () => {
+        create.mockResolvedValueOnce(answer("ok"));
+        await ai().contextInteractWithTools([{ role: "user", content: "x" }], [], { webSearch: true });
+        expect(create.mock.calls[0][0].tools).toEqual([expect.objectContaining({ type: "web_search" })]);
+    });
+
+    it("records the token usage of every round under the given kind", async () => {
+        const usage = (input: number) => ({ usage: { input_tokens: input, output_tokens: 10 } });
+        create
+            .mockResolvedValueOnce({ ...toolRequest(call("c1", "search", {})), ...usage(1000) })
+            .mockResolvedValueOnce({ ...answer("ok"), ...usage(1500) });
+        await ai().contextInteractWithTools([{ role: "user", content: "x" }], [search], { kind: "question" });
+        expect(record).toHaveBeenCalledTimes(2);
+        expect(record).toHaveBeenNthCalledWith(2, "question", "gpt-5.6-terra", { input: 1500, cached: 0, output: 10, reasoning: 0 });
     });
 
     it("reports unknown tools, bad arguments and tool exceptions to the model instead of throwing", async () => {

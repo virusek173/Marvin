@@ -32,12 +32,6 @@ export interface PeopleMap {
 }
 
 /**
- * Which AI service should handle a given query.
- * Returned by the decider model as a single word in its response.
- */
-export type AIRouter = 'MARVIN' | 'PERPLEXITY';
-
-/**
  * Cron schedule keys used in index.ts.
  */
 export interface CronMap {

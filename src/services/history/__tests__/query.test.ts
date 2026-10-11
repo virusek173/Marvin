@@ -108,7 +108,10 @@ describe("HistoryQuery", () => {
 
             q.close();
             q = new HistoryQuery(file, { excludedChannelIds: [], selfId: MARVIN, guildId: () => "G1" });
-            expect(q.search({ query: "link" }).messages[0].cite).toBe("[10.03.2025 12:00](<https://discord.com/channels/G1/c1/777>)");
+            const scoped = q.scoped("x");
+            expect(scoped.search({ query: "link" }).messages[0].cite).toBe("{c1}");
+            expect(scoped.search({ query: "link" }).messages[0].cite).toBe("{c1}");
+            expect(scoped.expandCites("{c1}")).toBe("[10.03.2025 12:00](<https://discord.com/channels/G1/c1/777>)");
         });
 
         it("treats operators and quotes in the query as plain text, never as FTS syntax or SQL", () => {
@@ -233,14 +236,21 @@ describe("HistoryQuery", () => {
             for (let i = 0; i < 100; i++) db.insertLive(row({ content: "ą".repeat(1500) }));
             const res = q.range({ limit: 100 });
             expect(JSON.stringify(res).length).toBeLessThanOrEqual(LIMITS.totalChars + 500);
-            expect(res.truncated).toBe(true);
+            expect(res.messages.every(m => m.text.length <= LIMITS.rangeTextChars + 1)).toBe(true);
         });
 
-        it("with newest still flags a cut caused by the size budget", () => {
-            for (let i = 0; i < 100; i++) db.insertLive(row({ content: "x".repeat(2000) }));
-            const res = q.range({ limit: 100, newest: true });
-            expect(res.count).toBeLessThan(100);
-            expect(res.truncated).toBe(true);
+        it("flags a cut caused by the size budget, also with newest", () => {
+            const saved = LIMITS.totalChars;
+            LIMITS.totalChars = 8000;
+            try {
+                for (let i = 0; i < 100; i++) db.insertLive(row({ content: "x".repeat(2000) }));
+                const res = q.range({ limit: 100, newest: true });
+                expect(res.count).toBeLessThan(100);
+                expect(res.truncated).toBe(true);
+                expect(JSON.stringify(res).length).toBeLessThanOrEqual(8000 + 500);
+            } finally {
+                LIMITS.totalChars = saved;
+            }
         });
 
         it("caps results and marks truncation", () => {
@@ -294,7 +304,19 @@ describe("HistoryQuery", () => {
             db.insertLive(r);
             q.scoped(r.id);
             expect(q.search({ query: "rower" }).count).toBe(1);
-            expect(q.scoped("abc")).toBe(q);
+            const unscoped = q.scoped("abc");
+            expect(unscoped.search({ query: "rower" }).count).toBe(1);
+        });
+
+        it("gives every scoped view its own citation tokens and expands them back to links", () => {
+            q.close();
+            q = new HistoryQuery(file, { excludedChannelIds: [], selfId: MARVIN, guildId: () => "G1" });
+            db.insertLive(row({ id: "777", content: "link test", channelId: "c1", createdAt: BASE }));
+            const first = q.scoped("999999999999999999");
+            const second = q.scoped("999999999999999999");
+            expect(first.search({ query: "link" }).messages[0].cite).toBe("{c1}");
+            expect(first.expandCites("- {c1} tekst")).toBe("- [10.03.2025 12:00](<https://discord.com/channels/G1/c1/777>) tekst");
+            expect(second.expandCites("- {c1} tekst")).toBe("-  tekst");
         });
 
         it("combines with excluded channels", () => {

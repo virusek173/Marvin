@@ -7,35 +7,34 @@ import {
     parseContextTimestamp,
     splitForDiscord,
     moveCitesToLineStart,
+    shortenWebCitations,
 } from "../utils/helpers.js";
 import { Message, OpenAi, ToolSpec } from "../services/openai.js";
 import { DateService } from "./date.js";
 import { ClientService } from "./client.js";
 import { ContextService } from "./context.js";
-import { Perplexity } from "./perplexity.js";
 import { Grok } from "./grok.js";
 import {
-    DECIDER_SYSTEM_PROMPT,
     IMAGE_LAZY_REPLIES,
     getServerSummarySystemPrompt,
     getBotExchangeExhaustedSystemPrompt,
     getMarvinMotivationSystemPrompt,
-    getPerplexityToMarvinResponsePrompt,
     getProfileSystemPrompt,
     getAuthorProfilePrompt,
     getMonthlyReportSystemPrompt,
     WAKE_UP_MESSAGE_PROMPT,
     HISTORY_TOOLS_PROMPT,
+    WEB_SEARCH_PROMPT,
     getArchiveRangePrompt
 } from "../utils/prompts.js";
 import { CustomEmoji, getEmojiReactionSystemPrompt, isReactable, parseEmojiChoice, shouldRollReaction, isMissingPermission, addReaction } from "../utils/emojiReaction.js";
-import { DECIDER_MODEL_NAME, SHORT_REACTION_MODEL_NAME, SERVER_SUMMARY_MODEL_NAME, PROFILE_MODEL_NAME } from "../utils/consts.js";
+import { SHORT_REACTION_MODEL_NAME, SERVER_SUMMARY_MODEL_NAME, PROFILE_MODEL_NAME } from "../utils/consts.js";
 import { extractUrls, scrapeUrl } from "./scraper.js";
 import { MessageArchive, getExcludedChannelIds, HISTORY_DB_FILE } from "./history/archive.js";
 import { HistoryQuery } from "./history/query.js";
 import { buildHistoryTools } from "./history/tools.js";
 import { formatImageDescriptions, collectReactions } from "./history/mapper.js";
-import { INTERNET_NOTICE, isTechnicalMarvinContent } from "./history/technical.js";
+import { isTechnicalMarvinContent } from "./history/technical.js";
 import { HistoryContext, renderLine } from "./history/context.js";
 import { HistorySync } from "./history/sync.js";
 import { ProfileService } from "./history/profiles.js";
@@ -78,26 +77,23 @@ const peopleMap = {
 const EXCLUDED_CHANNEL_IDS = getExcludedChannelIds();
 const openai = new OpenAi();
 const grok = new Grok();
-const decider = new OpenAi();
-const perplexity = new Perplexity();
 const MODEL = openai;
 const botExchangeCounters = new Map<string, number>();
 const BOT_EXCHANGE_LIMIT = 2;
 const SERVER_SUMMARY_FALLBACK_DAYS = 3;
 const SERVER_SUMMARY_MAX_MESSAGES = 1500;
 const BOT_EXHAUSTED_REPLY = "Mam Cię dość. Nie pisz do mnie więcej.";
+const WEB_ANSWER_ICON = "🌐";
 
 /**
  * Main Discord bot service. Handles:
  * - Bot initialization and login
  * - Sending a short wake-up message on "ready"
- * - Routing incoming messages to the appropriate AI service (MARVIN or PERPLEXITY)
+ * - Answering mentions with one tool loop (archive tools + web search)
  *
  * Message routing logic:
  * 1. Every message is archived in the SQLite history; the context is read back from it (ContextService is only an in-memory fallback)
- * 2. If the message mentions Marvin (@Marvin or reply), the decider model classifies it
- * 3. PERPLEXITY: fetches web data first, then asks MODEL to rephrase the result
- * 4. MARVIN: answers directly using conversation context + system prompt
+ * 2. If the message mentions Marvin (@Marvin or reply), MODEL answers from the context and calls the archive tools or web search when it needs them
  */
 export class DiscordServce {
     private client: any;
@@ -133,7 +129,7 @@ export class DiscordServce {
                 const forcedMonth = parseMonthKey(process.env.MONTHLY_REPORT_FORCE_MONTH ?? "");
                 if (forcedMonth) void this.sendMonthlyReport(forcedMonth);
 
-                const wakeUpMessage = await MODEL.interact(WAKE_UP_MESSAGE_PROMPT);
+                const wakeUpMessage = await MODEL.interact(WAKE_UP_MESSAGE_PROMPT, undefined, false, "wake-up");
                 channel.send(wakeUpMessage?.content ?? "Wstałem.");
             } catch (error: any) {
                 return exceptionHandler(error, channel)
@@ -148,8 +144,12 @@ export class DiscordServce {
             }
 
             const channelId = message?.channelId;
-            const imageDescriptions = await this.describeImages(message);
-            this.archive.archive(message, imageDescriptions);
+            const prepared = this.describeImages(message).then(descriptions => {
+                this.archive.archive(message, descriptions);
+                return descriptions;
+            });
+            this.trackPendingArchive(channelId, prepared);
+            const imageDescriptions = await prepared;
             const userResponse = await this.userResponseFactory(message, imageDescriptions);
             this.fallbackContext.pushWithLimit(userResponse, channelId);
 
@@ -175,6 +175,25 @@ export class DiscordServce {
         this.client.on("messageReactionRemoveAll", (message: any) => void this.refreshReactions(message));
 
         this.client.login(DISCORD_CLIENT_TOKEN);
+    }
+
+    private pendingArchives = new Map<string, Set<Promise<unknown>>>();
+
+    private trackPendingArchive(channelId: string, work: Promise<unknown>): void {
+        let set = this.pendingArchives.get(channelId);
+        if (!set) set = new Set<Promise<unknown>>();
+        const settled = work.then(() => undefined, () => undefined).finally(() => {
+            set.delete(settled);
+            if (set.size === 0) this.pendingArchives.delete(channelId);
+        });
+        set.add(settled);
+        this.pendingArchives.set(channelId, set);
+    }
+
+    /** A message with an image reaches the archive only after its description is ready; a question asked right after it must not build its context before that. */
+    private async waitForPendingArchives(channelId: string): Promise<void> {
+        const set = this.pendingArchives.get(channelId);
+        if (set?.size) await Promise.all([...set]);
     }
 
     /** Re-reads the reactions of an archived message after someone added or removed one. Messages not in the archive are skipped; the backfill brings their reactions. */
@@ -222,7 +241,7 @@ export class DiscordServce {
                     const response = await MODEL.contextInteract([
                         MODEL.messageFactory(system, 'system'),
                         MODEL.messageFactory(user),
-                    ], PROFILE_MODEL_NAME);
+                    ], PROFILE_MODEL_NAME, false, "profile");
                     return typeof response?.content === "string" ? response.content : null;
                 },
             });
@@ -279,7 +298,7 @@ export class DiscordServce {
     /** Built per request so the date in the prompt is never stale. */
     getSystemContext(withHistoryTools: boolean = false, authorProfile: string = ''): Message {
         const date = new DateService().getFormattedDate();
-        const prompt = getMarvinMotivationSystemPrompt(date, peopleMap) + (withHistoryTools ? HISTORY_TOOLS_PROMPT + this.getArchiveRangePrompt() : '') + authorProfile;
+        const prompt = getMarvinMotivationSystemPrompt(date, peopleMap) + WEB_SEARCH_PROMPT + (withHistoryTools ? HISTORY_TOOLS_PROMPT + this.getArchiveRangePrompt() : '') + authorProfile;
         return MODEL.messageFactory(prompt, 'system');
     }
 
@@ -334,7 +353,7 @@ export class DiscordServce {
             const response = await MODEL.contextInteract([
                 MODEL.messageFactory(getEmojiReactionSystemPrompt(customEmojis), "system"),
                 MODEL.messageFactory(`${mapGlobalNameNameToRealName[message.author.globalName]}: ${message.content}`),
-            ], SHORT_REACTION_MODEL_NAME);
+            ], SHORT_REACTION_MODEL_NAME, false, "reaction");
             const emoji = parseEmojiChoice(response?.content, customEmojis);
             if (emoji) await addReaction(message, emoji);
         } catch (error: any) {
@@ -360,7 +379,7 @@ export class DiscordServce {
                 const response = await MODEL.contextInteract([
                     MODEL.messageFactory(getBotExchangeExhaustedSystemPrompt(), 'system'),
                     ...stripImages(await this.getContext(message)),
-                ], SHORT_REACTION_MODEL_NAME);
+                ], undefined, false, "bot-exchange");
                 if (response) content = stripLeadingTimestampPrefix(response.content);
             } catch (error: any) {
                 console.log("err: ", error?.message);
@@ -385,7 +404,7 @@ export class DiscordServce {
             const response = await MODEL.contextInteract([
                 MODEL.messageFactory(getServerSummarySystemPrompt(), 'system'),
                 MODEL.messageFactory(`Historia ostatnich wiadomości z serwera:\n${combinedText}`),
-            ], SERVER_SUMMARY_MODEL_NAME);
+            ], SERVER_SUMMARY_MODEL_NAME, false, "summary");
 
             if (response) {
                 const content = stripLeadingTimestampPrefix(response.content);
@@ -415,7 +434,7 @@ export class DiscordServce {
             const response = await MODEL.contextInteract([
                 MODEL.messageFactory(getMonthlyReportSystemPrompt(), 'system'),
                 MODEL.messageFactory(reportFacts(data)),
-            ], SERVER_SUMMARY_MODEL_NAME);
+            ], SERVER_SUMMARY_MODEL_NAME, false, "report");
             const commentary = typeof response?.content === "string" ? stripLeadingTimestampPrefix(response.content).trim() : "";
 
             const text = [`📊 **Statystyki serwera — ${month.label}**`, commentary, renderReportBlock(data)].filter(Boolean).join("\n\n");
@@ -454,7 +473,7 @@ export class DiscordServce {
             .join('\n');
     }
 
-    /** Handles a message that directly mentions or replies to Marvin. Routes to MARVIN or PERPLEXITY. */
+    /** Handles a message that directly mentions or replies to Marvin: one tool loop with the archive tools and web search. */
     async handleMentioned(message: any) {
         try {
             let assResponse = null;
@@ -470,6 +489,8 @@ export class DiscordServce {
 
             message.channel.sendTyping();
 
+            await this.waitForPendingArchives(message.channelId);
+
             const currentUrls = extractUrls(message.content);
             const context = stripImages(await this.getContext(message));
             const historyUrls = context.flatMap(msg =>
@@ -483,44 +504,24 @@ export class DiscordServce {
 
             const authorProfile = this.getAuthorProfile(message);
 
-            const deciderResponse = await decider.contextInteract([
-                MODEL.messageFactory(DECIDER_SYSTEM_PROMPT, 'system'),
-                ...context,
-            ], DECIDER_MODEL_NAME);
-
-            if (deciderResponse.content.includes('PERPLEXITY')) {
-                message.reply(INTERNET_NOTICE);
-                const { message: perplexityResponse } = await perplexity.contextInteract(context);
-                console.log(`perplexityResponse: ${perplexityResponse.content}`);
-                message.channel.sendTyping();
-
-                const userRequest = MODEL.messageFactory(getPerplexityToMarvinResponsePrompt(perplexityResponse.content));
-                assResponse = await MODEL.contextInteract([
-                    this.getSystemContext(false, authorProfile),
-                    ...context,
-                    ...scrapedContext,
-                    userRequest,
-                ]);
-            } else {
-                if (this.historyQuery && this.historyTools.length > 0) {
-                    assResponse = await MODEL.contextInteractWithTools(
-                        [this.getSystemContext(true, authorProfile), ...context, ...scrapedContext],
-                        buildHistoryTools(this.historyQuery.scoped(message.id)),
-                        { onRound: () => message.channel.sendTyping() }
-                    );
-                } else {
-                    assResponse = await MODEL.contextInteract([
-                        this.getSystemContext(false, authorProfile),
-                        ...context,
-                        ...scrapedContext,
-                    ]);
-                }
+            const typing = setInterval(() => message.channel.sendTyping().catch(() => {}), 8000);
+            try {
+                const historyTools = this.historyQuery && this.historyTools.length > 0 ? this.historyQuery.scoped(message.id) : null;
+                assResponse = await MODEL.contextInteractWithTools(
+                    [this.getSystemContext(!!historyTools, authorProfile), ...context, ...scrapedContext],
+                    historyTools ? buildHistoryTools(historyTools) : [],
+                    { webSearch: true, kind: "question", onRound: () => message.channel.sendTyping() }
+                );
+                if (assResponse && historyTools) assResponse = { ...assResponse, content: historyTools.expandCites(assResponse.content ?? "") };
+            } finally {
+                clearInterval(typing);
             }
 
             if (assResponse) {
                 const content = stripLeadingTimestampPrefix(assResponse.content ?? "");
                 if (!content.trim()) throw new Error("Model zwrócił pustą odpowiedź");
-                const [first, ...rest] = splitForDiscord(moveCitesToLineStart(content));
+                const body = shortenWebCitations(moveCitesToLineStart(content));
+                const [first, ...rest] = splitForDiscord(assResponse.webSearch ? `${WEB_ANSWER_ICON} ${body}` : body);
                 await message.reply(first);
                 for (const part of rest) await message.channel.send(part);
             }
