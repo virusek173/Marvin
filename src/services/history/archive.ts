@@ -46,10 +46,10 @@ export class MessageArchive {
         return this.excluded.has(channelId) || (!!parentId && this.excluded.has(parentId));
     }
 
-    archive(message: any, imageDescriptions?: string[]): void {
+    archive(message: any, imageDescriptions?: string[], voiceTranscripts?: string[]): void {
         if (!this.db) return;
         try {
-            const row = buildArchiveRow(message, { ...this.options, imageDescriptions });
+            const row = buildArchiveRow(message, { ...this.options, imageDescriptions, voiceTranscripts });
             if (this.isExcluded(row.channelId, row.parentId)) return;
             this.db.insertLive(row);
             this.db.upsertChannel(row.channelId, message.channel?.name ?? null, row.parentId);

@@ -1,7 +1,7 @@
-import OpenAI from "openai";
+import OpenAI, { toFile } from "openai";
 import { z } from "zod";
 import { zodResponseFormat } from "openai/helpers/zod";
-import { DEFAULT_MODEL_NAME, VISION_MODEL_NAME } from "../utils/consts.js";
+import { DEFAULT_MODEL_NAME, VISION_MODEL_NAME, TRANSCRIBE_MODEL_NAME } from "../utils/consts.js";
 import { usageTracker, TokenUsage } from "./usage.js";
 
 const Response = z.object({
@@ -251,6 +251,17 @@ export class OpenAi {
         } catch {
             return '[nie udało się opisać obrazka]';
         }
+    }
+
+    /** Speech-to-text for one voice message (Polish); throws on API errors, the caller decides what to show instead. */
+    async transcribeAudio(audio: Buffer, filename: string, contentType: string): Promise<string> {
+        const result: any = await this.openai.audio.transcriptions.create({
+            file: await toFile(audio, filename, { type: contentType }),
+            model: TRANSCRIBE_MODEL_NAME,
+            language: "pl",
+        });
+        usageTracker.record("voice", TRANSCRIBE_MODEL_NAME, readUsage(result.usage));
+        return String(result.text ?? "").trim();
     }
 
     messageFactory(content: string | ContentPart[], role: 'user' | 'system' | 'assistant' = 'user'): Message {

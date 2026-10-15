@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import * as fs from "fs";
 import * as path from "path";
-import { ArchiveRow, ReactionCount } from "./mapper.js";
+import { ArchiveRow, ReactionCount, UNTRANSCRIBED_VOICE_TEXT } from "./mapper.js";
 import { extractEmoji } from "./emoji.js";
 
 /** 1: message_emoji built from existing content; 2: sync cursors reset once so the backfill re-reads messages together with their reactions; 3: profiles.brief (short version for the system prompt). */
@@ -306,6 +306,20 @@ export class HistoryDb {
             }
             this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
         })();
+    }
+
+    /** Human voice messages stored without a transcript, oldest first, starting after `afterSeq`; excluded channels are left out. */
+    listUntranscribedVoice(afterSeq: number, limit: number, excludedChannelIds: string[]): { seq: number; id: string; channelId: string }[] {
+        const rows = this.db
+            .prepare(`SELECT seq, id, channel_id FROM messages
+                WHERE seq > ? AND attachments_text = ? AND is_bot = 0 ${excludedSql(excludedChannelIds)} ORDER BY seq LIMIT ?`)
+            .all(afterSeq, UNTRANSCRIBED_VOICE_TEXT, ...excludedChannelIds, ...excludedChannelIds, limit) as any[];
+        return rows.map(r => ({ seq: r.seq, id: r.id, channelId: r.channel_id }));
+    }
+
+    /** Replaces the untranscribed-voice text of a message (the FTS index follows through the update trigger); false when the row changed meanwhile. */
+    setVoiceTranscript(id: string, attachmentsText: string): boolean {
+        return this.db.prepare("UPDATE messages SET attachments_text = ? WHERE id = ? AND attachments_text = ?").run(attachmentsText, id, UNTRANSCRIBED_VOICE_TEXT).changes > 0;
     }
 
     upsertChannel(id: string, name: string | null, parentId: string | null): void {

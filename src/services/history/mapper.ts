@@ -30,9 +30,22 @@ export interface MapOptions {
     selfUsername?: string;
     /** One description per image attachment, in attachment order. Missing = backfill marker. */
     imageDescriptions?: string[];
+    /** One transcript per voice-message attachment, in attachment order. Missing = backfill marker. */
+    voiceTranscripts?: string[];
 }
 
 const isImage = (att: any): boolean => !!att?.contentType?.startsWith("image/");
+
+/** Discord voice messages are audio attachments that carry a duration (plain audio files do not). */
+export const isVoiceAttachment = (att: any): boolean => !!att?.contentType?.startsWith("audio/") && typeof att?.duration === "number";
+
+/** What the archive holds for a voice message that was not transcribed (backfill, feature off): Discord always names the file this way. */
+export const UNTRANSCRIBED_VOICE_TEXT = "[Załącznik: voice-message.ogg (audio/ogg)]";
+
+export const formatVoiceTranscripts = (transcripts: string[]): string =>
+    transcripts
+        .map((text, i) => (transcripts.length > 1 ? `[Głosówka ${i + 1}: ${text}]` : `[Głosówka: ${text}]`))
+        .join(" ");
 
 export const formatImageDescriptions = (descriptions: string[]): string =>
     descriptions
@@ -52,7 +65,7 @@ export const flattenEmbeds = (embeds: any[] | undefined, authorIsBot: boolean): 
         .filter(Boolean)
         .join("\n");
 
-export const describeAttachments = (message: any, imageDescriptions?: string[]): string => {
+export const describeAttachments = (message: any, imageDescriptions?: string[], voiceTranscripts?: string[]): string => {
     const attachments: any[] = [...(message?.attachments?.values() ?? [])];
     const images = attachments.filter(isImage);
     const parts: string[] = [];
@@ -61,7 +74,12 @@ export const describeAttachments = (message: any, imageDescriptions?: string[]):
         const descriptions = images.map((att, i) => imageDescriptions?.[i] ?? `nieopisany, plik ${att.name ?? "?"}`);
         parts.push(formatImageDescriptions(descriptions));
     }
-    for (const att of attachments.filter(a => !isImage(a))) {
+    const voices = attachments.filter(isVoiceAttachment);
+    if (voices.length > 0 && voiceTranscripts && voiceTranscripts.length > 0) {
+        parts.push(formatVoiceTranscripts(voices.map((_, i) => voiceTranscripts[i] ?? "[nieprzepisana]")));
+    }
+    const transcribed = voiceTranscripts && voiceTranscripts.length > 0;
+    for (const att of attachments.filter(a => !isImage(a) && !(transcribed && isVoiceAttachment(a)))) {
         parts.push(`[Załącznik: ${att.name ?? "?"}${att.contentType ? ` (${att.contentType})` : ""}]`);
     }
     return parts.join(" ");
@@ -83,7 +101,7 @@ export const collectReactions = (message: any): ReactionCount[] | undefined => {
 };
 
 export const buildArchiveRow = (message: any, options: MapOptions = {}): ArchiveRow => {
-    const { selfId, selfUsername, imageDescriptions } = options;
+    const { selfId, selfUsername, imageDescriptions, voiceTranscripts } = options;
     const author = message.author;
     const isSelf = (!!selfId && author.id === selfId) || (!!selfUsername && author.username === selfUsername);
     const channel = message.channel;
@@ -99,7 +117,7 @@ export const buildArchiveRow = (message: any, options: MapOptions = {}): Archive
         isBot: !!author.bot,
         content,
         embedsText: flattenEmbeds(message.embeds, !!author.bot),
-        attachmentsText: describeAttachments(message, imageDescriptions),
+        attachmentsText: describeAttachments(message, imageDescriptions, voiceTranscripts),
         replyToId: message.reference?.messageId ?? null,
         type: Number(message.type ?? 0),
         isTechnical: isSelf && isTechnicalMarvinContent(content),

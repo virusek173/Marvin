@@ -76,6 +76,12 @@ export class DiscordJsSource implements DiscordSource {
         return [...result.values()];
     }
 
+    async fetchMessage(channelId: string, messageId: string): Promise<any> {
+        const channel = this.known.get(channelId) ?? (await this.client.channels.fetch(channelId));
+        if (!channel?.messages) throw new Error(`kanał ${channelId} nie ma wiadomości do pobrania`);
+        return channel.messages.fetch(messageId);
+    }
+
     async fetchPage(channelId: string, options: { after?: string; limit: number }): Promise<any[]> {
         const channel = this.known.get(channelId) ?? (await this.client.channels.fetch(channelId));
         if (!channel?.messages) throw new Error(`kanał ${channelId} nie ma wiadomości do pobrania`);

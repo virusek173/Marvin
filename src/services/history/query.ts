@@ -155,6 +155,8 @@ export interface QueryFilters {
     emoji?: string;
     /** Only messages that received this emoji as a reaction. */
     reaction?: string;
+    /** Only voice messages (transcribed or not). */
+    voice?: boolean;
     channel?: string;
     from?: string;
     to?: string;
@@ -642,6 +644,9 @@ export class HistoryQuery {
             if (!key) return `Nie rozpoznaję emoji "${value}". Podaj emoji (np. 😂) albo nazwę emoji serwera (np. :pepe:).`;
             parts.push(`EXISTS (SELECT 1 FROM ${table} x WHERE x.message_id = ${alias}.id AND x.emoji = ? COLLATE NOCASE)`);
             params.push(key);
+        }
+        if (f.voice === true) {
+            parts.push(`(instr(${alias}.attachments_text, '[Głosówka') > 0 OR instr(${alias}.attachments_text, 'voice-message.ogg') > 0)`);
         }
         if (f.channel?.trim()) {
             const wanted = f.channel.trim().replace(/^#/, "");

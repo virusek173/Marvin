@@ -38,10 +38,12 @@ import { extractUrls } from "./scraper.js";
 import { MessageArchive, getExcludedChannelIds, HISTORY_DB_FILE } from "./history/archive.js";
 import { HistoryQuery } from "./history/query.js";
 import { buildHistoryTools } from "./history/tools.js";
-import { formatImageDescriptions, collectReactions } from "./history/mapper.js";
+import { formatImageDescriptions, formatVoiceTranscripts, collectReactions } from "./history/mapper.js";
+import { transcribeVoiceMessages } from "./voice.js";
 import { isTechnicalMarvinContent } from "./history/technical.js";
 import { HistoryContext, renderLine } from "./history/context.js";
 import { HistorySync } from "./history/sync.js";
+import { VoiceBackfill } from "./history/voiceBackfill.js";
 import { ProfileService } from "./history/profiles.js";
 import { ReportMonth, REPORT_MIN_MESSAGES, collectMonthlyReport, parseMonthKey, renderReportBlock, reportFacts } from "./history/report.js";
 import { DiscordJsSource } from "./history/discordSource.js";
@@ -54,7 +56,9 @@ const {
     BOTS_CHANNEL_ID,
     MARVIN_ID,
     MARVIN_USERNAME,
-    TEST_WEBHOOK_AS_HUMAN
+    TEST_WEBHOOK_AS_HUMAN,
+    VOICE_TRANSCRIPTION_ENABLED,
+    VOICE_BACKFILL_ENABLED
 } = process.env;
 
 const PERSON_IDS_TTL_MS = 10 * 60 * 1000;
@@ -88,6 +92,7 @@ export class DiscordServce {
     private historyContext: HistoryContext;
     private archive: MessageArchive;
     private historySync: HistorySync | null = null;
+    private voiceBackfill: VoiceBackfill | null = null;
     private historyQuery: HistoryQuery | null = null;
     private personIds: { ids: PeopleMap; at: number } | null = null;
     private historyTools: ToolSpec[] = [];
@@ -113,6 +118,7 @@ export class DiscordServce {
                 console.log(`Logged in as ${this.client.user.tag}!`);
 
                 this.startHistorySync();
+                this.startVoiceBackfill();
                 void this.updateProfiles();
                 const forcedMonth = parseMonthKey(process.env.MONTHLY_REPORT_FORCE_MONTH ?? "");
                 if (forcedMonth) void this.sendMonthlyReport(forcedMonth);
@@ -132,13 +138,13 @@ export class DiscordServce {
             }
 
             const channelId = message?.channelId;
-            const prepared = this.describeImages(message).then(descriptions => {
-                this.archive.archive(message, descriptions);
-                return descriptions;
+            const prepared = Promise.all([this.describeImages(message), this.transcribeVoices(message)]).then(([descriptions, transcripts]) => {
+                this.archive.archive(message, descriptions, transcripts);
+                return { descriptions, transcripts };
             });
             this.trackPendingArchive(channelId, prepared);
-            const imageDescriptions = await prepared;
-            const userResponse = await this.userResponseFactory(message, imageDescriptions);
+            const { descriptions: imageDescriptions, transcripts: voiceTranscripts } = await prepared;
+            const userResponse = await this.userResponseFactory(message, imageDescriptions, voiceTranscripts);
             this.fallbackContext.pushWithLimit(userResponse, channelId);
 
             const isMentioned = message.content.includes(MARVIN_ID) ||
@@ -257,22 +263,33 @@ export class DiscordServce {
         this.historySync.start();
     }
 
+    /** Transcribes voice messages already in the archive (costs API calls for the whole backlog), so it needs its own opt-in on top of VOICE_TRANSCRIPTION_ENABLED. */
+    private startVoiceBackfill() {
+        const db = this.archive.database;
+        if (!db || VOICE_TRANSCRIPTION_ENABLED !== "true" || VOICE_BACKFILL_ENABLED !== "true") return;
+        this.voiceBackfill = new VoiceBackfill(db, new DiscordJsSource(this.client), (audio, name, type) => MODEL.transcribeAudio(audio, name, type), {
+            excludedChannelIds: EXCLUDED_CHANNEL_IDS,
+        });
+        this.voiceBackfill.start();
+    }
+
     /**
      * Converts a Discord message into a context-ready Message object.
      * Prepends the sender's real name (from mapGlobalNameNameToRealName) to the content.
      * Example: "ewanick: hej co słychać" → {role: 'user', content: 'Ewa: hej co słychać'}
      */
-    async userResponseFactory(message: any, imageDescriptions?: string[]) {
+    async userResponseFactory(message: any, imageDescriptions?: string[], voiceTranscripts: string[] = []) {
         const realName = mapGlobalNameNameToRealName[message.author.globalName];
         const timestamp = new DateService(message.createdAt).getFormattedDateTime();
         const textContent = `${realName} (${timestamp}): ${message.content}`;
 
         const descriptions = imageDescriptions ?? await this.describeImages(message);
-        if (descriptions.length > 0) {
-            return MODEL.messageFactory(`${textContent} ${formatImageDescriptions(descriptions)}`);
-        }
+        const attachmentsText = [
+            descriptions.length > 0 ? formatImageDescriptions(descriptions) : "",
+            voiceTranscripts.length > 0 ? formatVoiceTranscripts(voiceTranscripts) : "",
+        ].filter(Boolean).join(" ");
 
-        return MODEL.messageFactory(textContent);
+        return MODEL.messageFactory(attachmentsText ? `${textContent} ${attachmentsText}` : textContent);
     }
 
     /** One text description per image attachment (vision model); empty array when there are no images. */
@@ -281,6 +298,12 @@ export class DiscordServce {
             (att: any) => att.contentType?.startsWith('image/')
         );
         return Promise.all(imageAttachments.map((att: any) => MODEL.describeImage(att.url)));
+    }
+
+    /** Transcripts of the message's voice attachments; opt-in, humans only, never for excluded channels (the audio would leave the server). */
+    async transcribeVoices(message: any): Promise<string[]> {
+        if (VOICE_TRANSCRIPTION_ENABLED !== "true" || message.author?.bot || this.archive.isExcluded(message.channelId, message.channel?.parentId)) return [];
+        return transcribeVoiceMessages(message, (audio, name, type) => MODEL.transcribeAudio(audio, name, type));
     }
 
     /** Built per request so the date in the prompt is never stale. */
@@ -537,6 +560,7 @@ export class DiscordServce {
 
     destroy() {
         this.historySync?.stop();
+        this.voiceBackfill?.stop();
         this.historyQuery?.close();
         this.client.destroy();
     }

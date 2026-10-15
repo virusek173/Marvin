@@ -11,6 +11,7 @@ src/
 │   ├── openai.ts          OpenAI API wrapper (tool-calling loop with web search, image description)
 │   ├── usage.ts           Token usage per day / call kind / model → data/usage.json
 │   ├── webTools.ts        fetch_url tool: page text for the model (scraper.ts: partial download, SSRF guard)
+│   ├── voice.ts           Voice-message transcription (opt-in via VOICE_TRANSCRIPTION_ENABLED)
 │   ├── airQuality.ts      get_air_quality tool: parcel-locker air sensor (opt-in via AIR_QUALITY_PAGE_URL)
 │   ├── client.ts          Discord.js client factory
 │   ├── date.ts            Date formatting utility
@@ -24,6 +25,7 @@ src/
 │       ├── discordSource.ts  The only place that talks to Discord for history — fetch only
 │       ├── context.ts     HistoryContext: last 30 messages of a channel from the archive
 │       ├── profiles.ts    ProfileService: periodic per-person profiles written to the `profiles` table
+│       ├── voiceBackfill.ts  Transcribes voice messages already in the archive (opt-in VOICE_BACKFILL_ENABLED)
 │       ├── report.ts      Monthly statistics report: exact numbers + unicode bar charts (phrases.ts counts words/pairs)
 │       ├── query.ts       Read-only query layer (separate readonly connection)
 │       ├── tools.ts       The tools exposed to the model (wrap query.ts only)
@@ -111,7 +113,7 @@ Discord: user sends message
     │
     ├── author = MARVIN_USERNAME? → archive it, SKIP the rest
     │
-    └── describeImages → archive.archive(message, descriptions)   ← ALL messages stored in the DB
+    └── describeImages + transcribeVoices → archive.archive(message, descriptions, transcripts)   ← ALL messages stored in the DB
             ↓
         [message mentions @Marvin or is reply to Marvin?]
             │
@@ -170,7 +172,7 @@ interface Message {
 | Service | Used for | Model | Internet? |
 |---|---|---|---|
 | `OpenAi` (MODEL) | Main responses (history tools + web search), wake-up message, summaries, profiles | `DEFAULT_MODEL_NAME` etc. in `consts.ts` | Yes (hosted `web_search` tool) |
-| `OpenAi` (cheap) | Image description (`VISION_MODEL_NAME`), emoji pick (`SHORT_REACTION_MODEL_NAME`) | `gpt-5.4-mini` / `gpt-5.4-nano` | No |
+| `OpenAi` (cheap) | Image description (`VISION_MODEL_NAME`), voice-message transcription (`TRANSCRIBE_MODEL_NAME`, `gpt-4o-mini-transcribe`, opt-in), emoji pick (`SHORT_REACTION_MODEL_NAME`) | `gpt-5.4-mini` / `gpt-5.4-nano` | No |
 
 ## Key Design Decisions
 
