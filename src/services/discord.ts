@@ -29,6 +29,8 @@ import {
     WEB_SEARCH_PROMPT,
     AIR_QUALITY_PROMPT,
     getArchiveRangePrompt,
+    getReminderPrompt,
+    getReminderCommentSystemPrompt,
     PromptProfile
 } from "../utils/prompts.js";
 import { CustomEmoji, getEmojiReactionSystemPrompt, isReactable, parseEmojiChoice, shouldRollReaction, isMissingPermission, addReaction } from "../utils/emojiReaction.js";
@@ -36,6 +38,7 @@ import { SHORT_REACTION_MODEL_NAME, SERVER_SUMMARY_MODEL_NAME, PROFILE_MODEL_NAM
 import { buildWebTools } from "./webTools.js";
 import { createAirQuality, translateLevel, type AirReading } from "./airQuality.js";
 import { airSeverity, evaluateAirAlert, formatAirAlert, readAirAlertState, writeAirAlertState, type AirAlertAction } from "./airAlert.js";
+import { RemindersDb, ReminderService, buildReminderTools, buildCommentInput, cleanReminderComment, reminderCalendar } from "./reminders.js";
 import { extractUrls } from "./scraper.js";
 import { MessageArchive, getExcludedChannelIds, HISTORY_DB_FILE } from "./history/archive.js";
 import { HistoryQuery } from "./history/query.js";
@@ -102,6 +105,8 @@ export class DiscordServce {
     private historyQuery: HistoryQuery | null = null;
     private personIds: { ids: PeopleMap; at: number } | null = null;
     private historyTools: ToolSpec[] = [];
+    private remindersDb: RemindersDb | null = null;
+    private reminderService: ReminderService | null = null;
     private profilesRunning = false;
     private emojiReactionsDisabled = false;
     private airNoDataSince: number | null = null;
@@ -116,6 +121,7 @@ export class DiscordServce {
         });
         this.historyContext = new HistoryContext(this.archive.database, this.fallbackContext, EXCLUDED_CHANNEL_IDS, MARVIN_ID);
         this.openHistoryTools();
+        this.openReminders();
 
         const clientService = new ClientService();
         this.client = clientService.getClient();
@@ -127,6 +133,7 @@ export class DiscordServce {
 
                 this.startHistorySync();
                 this.startVoiceBackfill();
+                void this.checkReminders();
                 void this.updateProfiles();
                 const forcedMonth = parseMonthKey(process.env.MONTHLY_REPORT_FORCE_MONTH ?? "");
                 if (forcedMonth) void this.sendMonthlyReport(forcedMonth);
@@ -227,6 +234,60 @@ export class DiscordServce {
         }
     }
 
+    /** Reminders live in their own SQLite file; without it Marvin simply has no reminder tools. */
+    private openReminders() {
+        try {
+            this.remindersDb = new RemindersDb();
+            this.reminderService = new ReminderService({
+                db: this.remindersDb,
+                log: message => console.log(`[reminders] ${message}`),
+                send: async (channelId, content, userIds) => {
+                    const channel = this.client.channels.cache.get(channelId) ?? await this.client.channels.fetch(channelId);
+                    if (!channel?.send) throw new Error(`kanał ${channelId} niedostępny`);
+                    await channel.send({ content, allowedMentions: { parse: [], users: userIds } });
+                },
+                comment: async (reminder, late) => {
+                    const response = await MODEL.contextInteract([
+                        MODEL.messageFactory(getReminderCommentSystemPrompt(), 'system'),
+                        MODEL.messageFactory(buildCommentInput(reminder, late, Date.now())),
+                    ], SERVER_SUMMARY_MODEL_NAME, false, "reminder");
+                    return typeof response?.content === "string" ? cleanReminderComment(response.content) : null;
+                },
+            });
+            this.reminderService.recover();
+        } catch (error: any) {
+            this.remindersDb = null;
+            this.reminderService = null;
+            console.error("[reminders] nie udało się otworzyć bazy przypomnień — Marvin bez przypomnień:", error?.message);
+        }
+    }
+
+    /** Delivers the reminders that are due. Called every minute from index.ts; does nothing before the Discord client is ready. Never throws. */
+    async checkReminders() {
+        if (!this.reminderService || !this.client.isReady?.()) return;
+        try {
+            await this.reminderService.processDue();
+        } catch (error: any) {
+            console.error("[reminders] błąd przetwarzania:", error?.message);
+        }
+    }
+
+    /** Reminder tools for one question, or none: no database, a bot author or an excluded channel (nothing from there is stored). */
+    private buildReminderToolsFor(message: any): ToolSpec[] {
+        if (!this.remindersDb) return [];
+        const isTestWebhook = TEST_WEBHOOK_AS_HUMAN === "true" && !!message.webhookId;
+        if (message.author?.bot && !isTestWebhook) return [];
+        if (this.archive.isExcluded(message.channelId, message.channel?.parentId)) return [];
+        return buildReminderTools({
+            db: this.remindersDb,
+            authorId: message.author.id,
+            authorName: mapGlobalNameNameToRealName[message.author.globalName],
+            channelId: message.channelId,
+            sourceMessageId: message.id,
+            personIds: () => this.getPersonIds(),
+        });
+    }
+
     /**
      * Writes/refreshes the generated person profiles (opt-in via PROFILES_ENABLED=true). Safe to call often: people whose
      * profile is younger than a week or who wrote too little since are skipped. Never throws.
@@ -316,9 +377,9 @@ export class DiscordServce {
     }
 
     /** Built per request so the date in the prompt is never stale. */
-    getSystemContext(withHistoryTools: boolean = false, authorProfile: string = ''): Message {
+    getSystemContext(withHistoryTools: boolean = false, authorProfile: string = '', extraPrompt: string = ''): Message {
         const date = new DateService().getFormattedDate();
-        const prompt = getMarvinMotivationSystemPrompt(date, MARVIN_ID, this.getPersonIds(), this.getKnownProfiles()) + WEB_SEARCH_PROMPT + (airQualityTools ? AIR_QUALITY_PROMPT : '') + (withHistoryTools ? HISTORY_TOOLS_PROMPT + this.getArchiveRangePrompt() : '') + authorProfile;
+        const prompt = getMarvinMotivationSystemPrompt(date, MARVIN_ID, this.getPersonIds(), this.getKnownProfiles()) + WEB_SEARCH_PROMPT + (airQualityTools ? AIR_QUALITY_PROMPT : '') + (withHistoryTools ? HISTORY_TOOLS_PROMPT + this.getArchiveRangePrompt() : '') + extraPrompt + authorProfile;
         return MODEL.messageFactory(prompt, 'system');
     }
 
@@ -604,12 +665,13 @@ export class DiscordServce {
 
             let fetchedPage = false;
             let airData = false;
+            const reminderTools = this.buildReminderToolsFor(message);
             const typing = setInterval(() => message.channel.sendTyping().catch(() => {}), 8000);
             try {
                 const historyTools = this.historyQuery && this.historyTools.length > 0 ? this.historyQuery.scoped(message.id) : null;
                 assResponse = await MODEL.contextInteractWithTools(
-                    [this.getSystemContext(!!historyTools, authorProfile), ...context],
-                    [...(historyTools ? buildHistoryTools(historyTools) : []), ...buildWebTools(() => { fetchedPage = true; }), ...(airQualityTools ? airQualityTools(() => { airData = true; }) : [])],
+                    [this.getSystemContext(!!historyTools, authorProfile, reminderTools.length ? getReminderPrompt(reminderCalendar(Date.now())) : ''), ...context],
+                    [...(historyTools ? buildHistoryTools(historyTools) : []), ...buildWebTools(() => { fetchedPage = true; }), ...(airQualityTools ? airQualityTools(() => { airData = true; }) : []), ...reminderTools],
                     { webSearch: true, kind: "question", requireTool: extractUrls(message.content ?? "").length > 0 ? "fetch_url" : undefined, onRound: () => message.channel.sendTyping() }
                 );
                 if (assResponse && historyTools) assResponse = { ...assResponse, content: historyTools.expandCites(assResponse.content ?? "") };
@@ -635,6 +697,7 @@ export class DiscordServce {
         this.historySync?.stop();
         this.voiceBackfill?.stop();
         this.historyQuery?.close();
+        this.remindersDb?.close();
         this.client.destroy();
     }
 }

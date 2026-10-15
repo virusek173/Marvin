@@ -15,6 +15,7 @@ const croneMap = {
   EVERY_DAY_EIGHT_PM: "0 20 * * *",
   EVERY_DAY_FOUR_AM: "0 4 * * *",
   EVERY_HALF_HOUR: "*/30 * * * *",
+  EVERY_MINUTE: "* * * * *",
 };
 const croneOptions = {
   timezone: "Europe/Warsaw",
@@ -59,6 +60,9 @@ cron.schedule(croneMap.EVERY_DAY_FOUR_AM, () => {
 }, croneOptions);
 cron.schedule(croneMap.EVERY_HALF_HOUR, () => {
   void client?.checkAirAlert();
+}, croneOptions);
+cron.schedule(croneMap.EVERY_MINUTE, () => {
+  void client?.checkReminders();
 }, croneOptions);
 const readLastReportMonth = (): string | null => {
   try {

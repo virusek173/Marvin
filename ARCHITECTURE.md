@@ -12,6 +12,7 @@ src/
 │   ├── usage.ts           Token usage per day / call kind / model → data/usage.json
 │   ├── webTools.ts        fetch_url tool: page text for the model (scraper.ts: partial download, SSRF guard)
 │   ├── voice.ts           Voice-message transcription (opt-in via VOICE_TRANSCRIPTION_ENABLED)
+│   ├── reminders.ts       Reminders: data/reminders.db, create/list/cancel_reminder tools, per-minute delivery with a short Marvin comment
 │   ├── airQuality.ts      get_air_quality tool: parcel-locker air sensor (opt-in via AIR_QUALITY_PAGE_URL); read() for the alert
 │   ├── airAlert.ts        Air alert rules (state machine, quiet hours, cooldown), state file, message template
 │   ├── client.ts          Discord.js client factory
@@ -122,7 +123,7 @@ Discord: user sends message
             │        (Unicode or server custom emoji; utils/emojiReaction.ts; needs Add Reactions; not archived)
             │
             └── YES → context = last 30 non-technical messages of the channel from the DB
-                    MODEL.contextInteractWithTools([system + web/history rules, ...context], historyTools, { webSearch: true })
+                    MODEL.contextInteractWithTools([system + web/history/reminder rules, ...context], historyTools + fetch_url + reminder tools, { webSearch: true })
                             ↓ the model decides by itself (no separate decision step): archive tools and/or hosted web_search
                                 ↓ model may call search_messages / get_messages / get_message_context / get_conversation / get_stats / get_profile / list_channels
                                 ↓ (OpenAI Responses API, reasoning "low"; max 5 rounds, then a forced answer without tools;
@@ -160,6 +161,16 @@ airAlert.evaluateAirAlert(state from data/air_alert.json, level): BAD / VERY_BAD
 only 07:00-22:00 Warsaw (otherwise pending until the first daytime reading), "back to normal" after 2 fine readings
     ↓
 [action] fixed text (formatAirAlert) + one sentence from Marvin (SERVER_SUMMARY_MODEL_NAME, usage kind `alert`) → channel(AIR_ALERT_CHANNEL_ID)
+```
+
+```
+node-cron: "* * * * *" (Europe/Warsaw)
+    ↓
+client.checkReminders() → ReminderService.processDue()
+    ↓
+data/reminders.db: due rows pending → sending (one transaction) → per reminder: Marvin's one-line comment (15 s timeout, optional)
+    ↓
+channel of the request: "⏰ Przypomnienie dla <@id>: text" + comment; sent → done, failed → pending again (max 10 attempts)
 ```
 
 ## Data Models

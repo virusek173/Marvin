@@ -182,7 +182,7 @@ describe("OpenAi.contextInteractWithTools", () => {
     });
 
     it("retries on gibberish: CJK/Georgian characters or leaked English reasoning", async () => {
-        for (const bad of ["[2026.10.03  北京赛车 微信里的", "კომენტary tak", "We need respond continuation timestamp", "[assistant (analysis)"]) {
+        for (const bad of ["[2026.10.03  北京赛车 微信里的", "კომენტary tak", "We need respond continuation timestamp", "We need answer as Marvin to last user", "[assistant (analysis)"]) {
             create.mockReset();
             create.mockResolvedValueOnce(answer(bad)).mockResolvedValueOnce(answer("normalna odpowiedź"));
             const res = await ai().contextInteractWithTools([{ role: "user", content: "x" }], [search]);

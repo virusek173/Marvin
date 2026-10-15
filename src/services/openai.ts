@@ -61,7 +61,7 @@ const toResponsesInput = (m: Message) => ({
 });
 // the model sometimes prints its tool call as plain text ("assistant to=functions.x ...") instead of calling it,
 // a bare speaker header ("Marvin", "Marvin (2026.10.05 12:00):") with no text after it, or emits tool-channel garbage ("[tool]\nYou have N weighted tokens left") as the answer
-const LEAKED_TOOL_CALL = /\bto=functions\.|<\|(?:call|channel|start|end|message)\|>|^\s*\[tool\]|weighted tokens left|[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\u10a0-\u10ff]|\bWe need (?:to )?respond|^\s*\[assistant\b|^\s*Marvin\s*(?:\([^)\n]*\))?\s*:?\s*$/i;
+const LEAKED_TOOL_CALL = /\bto=functions\.|<\|(?:call|channel|start|end|message)\|>|^\s*\[tool\]|weighted tokens left|[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\u10a0-\u10ff]|\bWe need (?:to )?(?:respond|answer|reply)|^\s*\[assistant\b|^\s*Marvin\s*(?:\([^)\n]*\))?\s*:?\s*$/i;
 
 const NO_USAGE: TokenUsage = { input: 0, cached: 0, output: 0, reasoning: 0 };
 
