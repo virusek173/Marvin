@@ -1,6 +1,21 @@
-# Marvin - Motivational Discord Bot
+# Marvin - a multi-purpose Discord bot
 
-Marvin is a Discord bot that answers questions from server members using multiple AI models and posts a periodic server summary.
+Marvin is a Discord bot with a memory of your server. It keeps a searchable archive of every message, answers questions about what was said and by whom, searches the web, reads links and images, transcribes voice messages, sets reminders, watches the air quality and posts periodic digests. It is sarcastic, has opinions and writes in Polish. Powered by OpenAI, running in Docker.
+
+## What Marvin can do
+
+Mention `@Marvin` (or reply to him) and one model loop picks the right tool for the question:
+
+- **Remembers the whole server.** Every message goes to a local SQLite archive with full-text search. Marvin answers history questions ("what did Jacek write about the holiday?", "what did we agree on?") and counts exactly ("who wrote the most?", "who sent how many voice messages?", most reacted messages, emoji statistics) with read-only tools, never with guesses.
+- **Knows people.** Opt-in generated profiles of regular participants; Marvin uses them to answer "what does Madzia like?" and to fit the tone of his replies.
+- **Searches the web** with OpenAI's hosted web search, and **reads links** you paste (`fetch_url`, SSRF-guarded).
+- **Understands images** (short descriptions by a cheap vision model) and **voice messages** (transcription, opt-in; also for the ones already in the archive).
+- **Sets reminders**: "remind me on Friday at 18 about X" is delivered on time with a short comment from Marvin.
+- **Watches the air quality** from a parcel-locker sensor: answers "how is the air?" and, opt-in, posts an alert to a chosen channel when it is bad (and a note when it is back to normal).
+- **Posts on a schedule**: a digest of recent server activity every few days and, opt-in, a monthly statistics report with bar charts and award titles.
+- **Reacts with emoji** to a small share of human messages, picked by a cheap model.
+
+Marvin never edits or deletes anything on Discord. The bot role needs only View Channel, Read Message History, Send Messages and Add Reactions (see the read-only guard in [CLAUDE.md](CLAUDE.md)).
 
 ## Quick Start
 
@@ -16,50 +31,51 @@ cp .env.example .env
 npm run marvin
 ```
 
+## How It Works
+
+1. **When mentioned** (`@Marvin` or reply) - Marvin reads the last 30 messages of the channel from the archive and answers. The model itself decides whether to search the archive, search the web, fetch a page, read the air sensor, set a reminder, or just answer from knowledge
+2. **All messages** - archived in `data/history.db`. `HISTORY_SYNC_ENABLED=true` imports the whole server history and catches up hourly; the bot role must not have Manage Messages, Manage Channels, Manage Threads, Kick, Ban or Administrator
+3. **Every `SERVER_SUMMARY_INTERVAL_DAYS` days (default 3) at 20:00 (Warsaw)** - a digest of recent server activity goes to the bots channel
+4. **Person profiles** (`PROFILES_ENABLED=true`) - descriptions generated from archived messages, refreshed when a week old and enough new messages arrived
+5. **Monthly statistics report** (`MONTHLY_REPORT_ENABLED=true`) - on the 1st at 20:00 (Warsaw): top authors, loudest days, busiest hour, channels, common words and phrases, with exact numbers
+6. **Voice messages** (`VOICE_TRANSCRIPTION_ENABLED=true`, plus `VOICE_BACKFILL_ENABLED=true` for the archive) - transcripts are stored in the archive, so they are searchable and countable
+7. **Reminders** - stored in `data/reminders.db`, delivered by a per-minute check
+8. **Air quality** (`AIR_QUALITY_PAGE_URL`; alert with `AIR_QUALITY_ALERT_ENABLED=true` and `AIR_ALERT_CHANNEL_ID`) - a 30-minute check with confirmations, a cooldown and quiet hours at night
+9. **Emoji reactions** - each human message has a 2% chance; needs the **Add Reactions** permission
+
+## Configuration
+
+Copy `.env.example` to `.env`. Optional features are off unless set to `true`: `HISTORY_SYNC_ENABLED`, `PROFILES_ENABLED`, `MONTHLY_REPORT_ENABLED`, `VOICE_TRANSCRIPTION_ENABLED`, `VOICE_BACKFILL_ENABLED`, `AIR_QUALITY_ALERT_ENABLED`. `EXCLUDED_CHANNEL_IDS` lists channels that are never archived, searched or summarized. See the environment table in [CLAUDE.md](CLAUDE.md) for every variable.
+
 ## Project Structure
 
 ```
 src/
-├── index.ts               Entry point — client startup, crons (summary, monthly report, profiles)
+├── index.ts               Entry point - client startup, crons (summary, report, profiles, reminders, air alert)
 ├── services/
-│   ├── discord.ts         Bot logic — message handling and AI routing
-│   ├── context.ts         In-memory FIFO context (fallback only)
-│   ├── history/           SQLite message archive: live write, backfill, context, read-only search tools, profiles, monthly report
-│   ├── openai.ts          OpenAI API wrapper (primary AI, tool loop, web search)
+│   ├── discord.ts         Bot logic - message handling and routing
+│   ├── openai.ts          OpenAI wrapper: tool loop, web search, vision, transcription
+│   ├── history/           SQLite message archive: live write, backfill, context, read-only search tools, profiles, report
+│   ├── reminders.ts       Reminder tools and delivery
+│   ├── airQuality.ts      Air sensor reading and the get_air_quality tool
+│   ├── airAlert.ts        Air alert rules, state and message template
+│   ├── voice.ts           Voice-message transcription
+│   ├── webTools.ts        fetch_url tool (scraper.ts: page text, SSRF guard)
+│   ├── context.ts         In-memory fallback context
 │   ├── usage.ts           Token usage statistics (data/usage.json)
 │   ├── client.ts          Discord.js client factory
 │   └── date.ts            Date formatting
 └── utils/
     ├── prompts.ts         System prompts and prompt factories
-    ├── helpers.ts         Utilities: pushWithLimit, name mapping, error handler
+    ├── helpers.ts         Utilities: name mapping, message splitting, error handler
+    ├── emojiReaction.ts   Spontaneous emoji reactions
     ├── consts.ts          Model name constants
     └── types.ts           Shared TypeScript interfaces
 ```
 
-## How It Works
-
-1. **Every `SERVER_SUMMARY_INTERVAL_DAYS` days (default 3) at 20:00 (Warsaw)** — Marvin posts a digest of recent server activity to the bots channel
-2. **When mentioned** (`@Marvin` or reply) — Marvin reads the conversation context and answers; the model itself decides whether to search the web (OpenAI's hosted web search) or the message archive, or to just answer from knowledge
-3. **All messages** — archived in a local SQLite database (`data/history.db`); the last 30 messages of a channel are the conversation context
-4. **History questions** ("what did Jacek write about the holiday?", "who wrote the most?", "what does Madzia like?") — Marvin uses read-only tools over the archive: full-text search, time ranges, surrounding messages and whole conversations, exact statistics (counts by author, channel, day, hour...) and generated person profiles. Set `HISTORY_SYNC_ENABLED=true` to import the whole server history; the bot role must not have Manage Messages, Manage Channels, Manage Threads, Kick, Ban or Administrator
-5. **Person profiles** (opt-in, `PROFILES_ENABLED=true`) — short descriptions of each regular participant (and the other bots), generated from their archived messages and refreshed when they are a week old and enough new messages arrived. Marvin also uses the profile of the person he is answering to fit his reply, and can look up anyone's profile on request
-6. **Monthly statistics report** (opt-in, `MONTHLY_REPORT_ENABLED=true`) — on the 1st of the month at 20:00 (Warsaw) Marvin posts the previous month's report to the bots channel: top authors, loudest days, busiest hour, channels, most common words and phrases as bar charts with exact numbers, plus his commentary and award titles. `MONTHLY_REPORT_FORCE_MONTH=YYYY-MM` posts a chosen month once at startup (for testing)
-7. **Emoji reactions** — each human message has a 2% chance of a reaction: one cheap model call reads only that message and picks the best-fitting Unicode or server custom emoji. Needs the **Add Reactions** permission on the bot role
-
-## Configuration
-
-Copy `.env.example` to `.env`. Optional switches (all off unless set to `true`): `HISTORY_SYNC_ENABLED`, `PROFILES_ENABLED`, `MONTHLY_REPORT_ENABLED`. `EXCLUDED_CHANNEL_IDS` lists channels that are never archived, searched or summarized. See the environment table in [CLAUDE.md](CLAUDE.md) for every variable.
-
 ## Staging
 
-`make staging-restart` / `make staging-logs` run a second instance (own bot token, own data volume) for testing without touching production.
-
-## Adding a New AI Service
-
-1. Create `src/services/newai.ts` with `interact()` and `contextInteract()` methods (follow `openai.ts` pattern)
-2. Add your API key to `.env` and `.env.example`
-3. Import and instantiate the service in `discord.ts`
-4. Add routing logic — either change the `MODEL` constant or add a new branch in `messageCreate`
+`make staging-restart` / `make staging-logs` run a second instance (own bot token, own data volume) for testing without touching production. `node scripts/staging-run.mjs` runs the test questions from `scripts/staging-cases.json`.
 
 ## Scripts
 
@@ -68,6 +84,7 @@ npm run marvin        # Build TypeScript and run
 npm run marvin:build  # Build only
 npm run marvin:run    # Run only (requires prior build)
 npm test              # Run Jest tests
+make usage            # Token usage per day and kind
 ```
 
 ## Docker
@@ -78,4 +95,4 @@ docker compose up --build
 
 ## Architecture
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for data flow diagrams and design decisions.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for data flow diagrams and design decisions, and [CLAUDE.md](CLAUDE.md) for the details of every feature.
