@@ -59,6 +59,12 @@ export function parseSensors(entries: unknown): Measurement[] {
 export const translateLevel = (level: unknown): string | null =>
     typeof level === "string" ? LEVELS[level.toUpperCase()] ?? null : null;
 
+/** One reading: the raw InPost level code (e.g. BAD) for code that decides on it, and the full result the tool shows the model. */
+export interface AirReading {
+    levelCode: string | null;
+    reading: Record<string, unknown>;
+}
+
 export interface Http {
     get: (url: string, config?: any) => Promise<{ data: any; headers: any }>;
     post: (url: string, data?: any, config?: any) => Promise<{ data: any; headers: any }>;
@@ -73,9 +79,9 @@ const warsawTime = (date: Date): string =>
  * Returns the tool factory; the 10-minute cache lives in the closure, so create it once.
  */
 export function createAirQuality(pageUrl: string, http: Http = axios as unknown as Http, now: () => Date = () => new Date()) {
-    let cached: { at: number; value: Record<string, unknown> } | null = null;
+    let cached: { at: number; value: AirReading } | null = null;
 
-    const fetchReading = async (): Promise<Record<string, unknown>> => {
+    const fetchReading = async (): Promise<AirReading> => {
         const page = new URL(pageUrl);
         if (page.protocol !== "https:" || !/(^|\.)inpost\.pl$/.test(page.hostname)) throw new Error("Nieprawidłowy adres strony czujnika");
         const config = { timeout: TIMEOUT_MS, maxRedirects: 0, headers: { "User-Agent": "Mozilla/5.0 (compatible; MarvinBot/1.0)" } };
@@ -96,7 +102,8 @@ export function createAirQuality(pageUrl: string, http: Http = axios as unknown 
 
         const point = pointResult.status === "fulfilled" ? pointResult.value.data : null;
         const data = dataResult.status === "fulfilled" ? dataResult.value.data : null;
-        const level = translateLevel(data?.air_index_level ?? point?.air_index_level);
+        const rawLevel = data?.air_index_level ?? point?.air_index_level;
+        const level = translateLevel(rawLevel);
         const measurements = parseSensors(data?.air_sensors);
         if (!level && measurements.length === 0) throw new Error("Czujnik nie zwrócił danych");
 
@@ -108,10 +115,16 @@ export function createAirQuality(pageUrl: string, http: Http = axios as unknown 
             measurements,
         };
         if (measurements.length === 0) reading.note = "Szczegółowe pomiary chwilowo niedostępne, jest tylko ogólny poziom jakości powietrza.";
-        return reading;
+        return { levelCode: level ? String(rawLevel).toUpperCase() : null, reading };
     };
 
-    return (onData: () => void): ToolSpec[] => [
+    /** Cached for 10 minutes; throws when the sensor gives nothing. */
+    const read = async (): Promise<AirReading> => {
+        if (!cached || now().getTime() - cached.at > CACHE_MS) cached = { at: now().getTime(), value: await fetchReading() };
+        return cached.value;
+    };
+
+    const tools = (onData: () => void): ToolSpec[] => [
         {
             name: "get_air_quality",
             description:
@@ -120,9 +133,9 @@ export function createAirQuality(pageUrl: string, http: Http = axios as unknown 
             parameters: { type: "object", properties: {} },
             run: async () => {
                 try {
-                    if (!cached || now().getTime() - cached.at > CACHE_MS) cached = { at: now().getTime(), value: await fetchReading() };
+                    const { reading } = await read();
                     onData();
-                    return cached.value;
+                    return reading;
                 } catch (error: any) {
                     console.error("Air quality error:", error.message);
                     return { error: "Nie udało się pobrać danych z czujnika w paczkomacie." };
@@ -130,4 +143,6 @@ export function createAirQuality(pageUrl: string, http: Http = axios as unknown 
             },
         },
     ];
+
+    return Object.assign(tools, { read });
 }

@@ -69,6 +69,22 @@ describe("get_air_quality tool", () => {
         expect(onData).toHaveBeenCalledTimes(1);
     });
 
+    it("exposes the raw level code through read() without leaking it into the tool result", async () => {
+        const http = fakeHttp({ post: async () => ({ data: { ...DATA, air_index_level: "BAD" }, headers: {} }) });
+        const createTools = createAirQuality(PAGE, http as unknown as Http, () => new Date("2026-10-11T12:30:00Z"));
+        const { levelCode, reading } = await createTools.read();
+        expect(levelCode).toBe("BAD");
+        expect(reading.airQualityLevel).toBe("zła");
+        const result: any = await createTools(jest.fn())[0].run({});
+        expect(result.levelCode).toBeUndefined();
+        expect(http.post).toHaveBeenCalledTimes(1);
+    });
+
+    it("read() rejects when the sensor gives nothing", async () => {
+        const http = fakeHttp({ post: async () => { throw new Error("403"); }, point: async () => { throw new Error("down"); } });
+        await expect(createAirQuality(PAGE, http as unknown as Http).read()).rejects.toThrow("Czujnik nie zwrócił danych");
+    });
+
     it("caches the reading for 10 minutes", async () => {
         const http = fakeHttp();
         let time = new Date("2026-10-11T12:00:00Z").getTime();

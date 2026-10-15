@@ -208,3 +208,9 @@ export const getBotExchangeExhaustedSystemPrompt = (): string =>
     Napisz krótką, zabawną riposte, która stawia kropkę nad "i" i jasno daje do zrozumienia, że dla Ciebie ta rozmowa się skończyła.
     Maksymalnie 1-2 zdania, w Twoim zwykłym stylu — zero owijania w bawełnę, możesz być uszczypliwy.`;
 
+
+/** One-sentence comment under the fixed air alert text (the numbers are already in the message). */
+export const getAirAlertSystemPrompt = (kind: "alert" | "recovery"): string =>
+    `Jesteś Marvinem. Na serwerze Discord właśnie pojawia się automatyczny komunikat o ${kind === "alert" ? "złej jakości powietrza w Poznaniu" : "powrocie jakości powietrza w Poznaniu do normy"}. Dostaniesz jego treść (poziom, pyły, temperatura).
+    Napisz JEDNO krótkie zdanie komentarza w swoim stylu: ${kind === "alert" ? "uszczypliwe albo sarkastyczne, ewentualnie z jedną praktyczną sugestią (np. okna, spacer)" : "z ulgą albo ironią"}.
+    Zasady: nie powtarzaj liczb ani nazwy miejsca, nie pisz o zdrowiu ani o chorobach, nie zmyślaj niczego, czego nie ma w treści. Bez emoji na początku i bez nagłówków. Zwróć samo zdanie.`;
