@@ -12,7 +12,7 @@ describe("CiteRegistry", () => {
         const r = new CiteRegistry();
         const link = "[01.10.2026 22:02](<https://discord.com/channels/1/2/3>)";
         r.add(link);
-        expect(r.expand("- {c1} Jack kupił rower; {c1} i {c9}")).toBe(`- ${link} Jack kupił rower; ${link} i `);
+        expect(r.expand("- {c1} Olek kupił rower; {c1} i {c9}")).toBe(`- ${link} Olek kupił rower; ${link} i `);
         expect(r.expand("bez znaczników")).toBe("bez znaczników");
     });
 });

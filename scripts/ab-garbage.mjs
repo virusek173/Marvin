@@ -14,13 +14,8 @@ const MODEL = "gpt-5.6-terra";
 const LEAKED = /\bto=functions\.|<\|(?:call|channel|start|end|message)\|>|^\s*\[tool\]|weighted tokens left|[぀-ヿ㐀-鿿가-힯Ⴀ-ჿ]|\bWe need (?:to )?respond|^\s*\[assistant\b/i;
 
 const env = process.env;
-const peopleMap = {
-    MarvinId: env.MARVIN_ID || "", HomarId: env.HOMAR_ID || "", JacekId: env.JACEK_ID || "", DominId: env.DOMIN_ID || "",
-    MariuszId: env.MARIUSZ_ID || "", WiktorId: env.WIKTOR_ID || "", MadziaId: env.MADZIA_ID || "", MasonId: env.MASON_ID || "",
-    PodsumowusId: env.PODSUMOWUS_ID || "", MugdaId: env.MUGDA_ID || "", WibotId: env.WIBOT_ID || "",
-};
 const date = new Date().toISOString().slice(0, 10);
-const system = getMarvinMotivationSystemPrompt(date, peopleMap) + HISTORY_TOOLS_PROMPT;
+const system = getMarvinMotivationSystemPrompt(date, env.MARVIN_ID, {}) + HISTORY_TOOLS_PROMPT;
 
 const db = new HistoryDb("data/history.db");
 const raw = new (await import("better-sqlite3")).default("data/history.db", { readonly: true });
@@ -31,13 +26,13 @@ const selfId = env.MARVIN_ID;
 const query = new HistoryQuery("data/history.db", { excludedChannelIds: [], selfId, guildId: () => "1" });
 const tools = buildHistoryTools(query).map(t => ({ type: "function", name: t.name, description: t.description, parameters: t.parameters, strict: false }));
 
-const asks = ["Hej", "Co tam?", "Ile wiadomości napisał Jack w tym roku?"];
+const asks = ["Hej", "Co tam?", "Ile wiadomości napisał Adam w tym roku?"];
 const lineBracket = m => `[${formatWarsaw(m.createdAt)}] ${m.authorId === selfId ? "Marvin" : mapGlobalNameNameToRealName[m.authorName]}: ${renderBody(m)}`;
 const lineParen = m => `${m.authorId === selfId ? "Marvin" : mapGlobalNameNameToRealName[m.authorName]} (${formatWarsaw(m.createdAt)}): ${renderBody(m)}`;
 
 const buildInput = (ask, line) => {
     const history = recent.slice(0, -1).map(m => ({ role: m.authorId === selfId ? "assistant" : "user", content: line(m) }));
-    const last = { ...recent[recent.length - 1], authorId: "x", authorName: "Jack", content: `<@${selfId}> ${ask}`, embedsText: "", attachmentsText: "" };
+    const last = { ...recent[recent.length - 1], authorId: "x", authorName: "Adam", content: `<@${selfId}> ${ask}`, embedsText: "", attachmentsText: "" };
     return [{ role: "system", content: system }, ...history, { role: "user", content: line(last) }];
 };
 

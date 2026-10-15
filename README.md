@@ -6,8 +6,8 @@ Marvin is a Discord bot with a memory of your server. It keeps a searchable arch
 
 Mention `@Marvin` (or reply to him) and one model loop picks the right tool for the question:
 
-- **Remembers the whole server.** Every message goes to a local SQLite archive with full-text search. Marvin answers history questions ("what did Jacek write about the holiday?", "what did we agree on?") and counts exactly ("who wrote the most?", "who sent how many voice messages?", most reacted messages, emoji statistics) with read-only tools, never with guesses.
-- **Knows people.** Opt-in generated profiles of regular participants; Marvin uses them to answer "what does Madzia like?" and to fit the tone of his replies.
+- **Remembers the whole server.** Every message goes to a local SQLite archive with full-text search. Marvin answers history questions ("what did Adam write about the holiday?", "what did we agree on?") and counts exactly ("who wrote the most?", "who sent how many voice messages?", most reacted messages, emoji statistics) with read-only tools, never with guesses.
+- **Knows people.** Opt-in generated profiles of regular participants; Marvin uses them to answer "what does Ania like?" and to fit the tone of his replies.
 - **Searches the web** with OpenAI's hosted web search, and **reads links** you paste (`fetch_url`, SSRF-guarded).
 - **Understands images** (short descriptions by a cheap vision model) and **voice messages** (transcription, opt-in; also for the ones already in the archive).
 - **Sets reminders**: "remind me on Friday at 18 about X" is delivered on time with a short comment from Marvin.
