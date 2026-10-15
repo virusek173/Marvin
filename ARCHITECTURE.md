@@ -185,7 +185,7 @@ interface Message {
 }
 
 // Context line shown to the model (built at read time from the DB row):
-//   "Jacek (YYYY.MM.DD HH:MM): text"   (Warsaw time; Marvin's own messages get role "assistant")
+//   "Adam (YYYY.MM.DD HH:MM): text"   (Warsaw time; Marvin's own messages get role "assistant")
 ```
 
 ## AI Services Comparison

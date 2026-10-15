@@ -232,7 +232,7 @@ describe("HistoryQuery", () => {
 
         it("keeps the whole serialized result (metadata and links included) within the budget", () => {
             q.close();
-            q = new HistoryQuery(file, { excludedChannelIds: [], selfId: MARVIN, guildId: () => "1279484250936311909" });
+            q = new HistoryQuery(file, { excludedChannelIds: [], selfId: MARVIN, guildId: () => "1" });
             for (let i = 0; i < 100; i++) db.insertLive(row({ content: "ą".repeat(1500) }));
             const res = q.range({ limit: 100 });
             expect(JSON.stringify(res).length).toBeLessThanOrEqual(LIMITS.totalChars + 500);

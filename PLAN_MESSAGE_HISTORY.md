@@ -66,7 +66,7 @@ read-only functions exposed to the main model (tool calling).
 - The bot code sends only `reply`, `send` and `sendTyping` to the server; nothing that deletes or moderates.
 - Intents: `Guilds`, `GuildMessages`, `MessageContent` — enough for live writes and backfill.
 - `Message` in `openai.ts` knows only the system/user/assistant roles; tool calling requires extending the type.
-- Names on Discord ≠ the crew's first names (Hardik/Dombear = Domin). Questions will use first names, so search
+- Names on Discord ≠ the crew's first names (a nick is not the first name). Questions will use first names, so search
   has to translate a first name into author ids.
 
 ## Stages

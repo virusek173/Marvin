@@ -71,8 +71,8 @@ describe("create_reminder, list_reminders, cancel_reminder", () => {
 
     const setup = (authorId = "1", overrides: Partial<Parameters<typeof buildReminderTools>[0]> = {}) => {
         const [create, list, cancel] = buildReminderTools({
-            db, authorId, authorName: "Jack", channelId: "c1", sourceMessageId: "m1",
-            personIds: () => ({ Adam: "11", Ewa: "22", Beata: "33", Jack: "1" }),
+            db, authorId, authorName: "Olek", channelId: "c1", sourceMessageId: "m1",
+            personIds: () => ({ Adam: "11", Ewa: "22", Beata: "33", Olek: "1" }),
             now: () => now,
             ...overrides,
         });
@@ -82,7 +82,7 @@ describe("create_reminder, list_reminders, cancel_reminder", () => {
     it("creates a reminder from a Warsaw date and returns the confirmation data", () => {
         const { create } = setup();
         const result: any = create({ text: "spotkanie", at: "2026-10-16 18:00" });
-        expect(result).toMatchObject({ id: 1, due: "piątek 16.10.2026 18:00", text: "spotkanie", pinged: ["Jack"] });
+        expect(result).toMatchObject({ id: 1, due: "piątek 16.10.2026 18:00", text: "spotkanie", pinged: ["Olek"] });
         expect(db.get(1)).toMatchObject({ authorId: "1", channelId: "c1", dueAt: Date.UTC(2026, 9, 16, 16, 0), status: "pending" });
     });
 
@@ -127,11 +127,11 @@ describe("create_reminder, list_reminders, cancel_reminder", () => {
 
     it("pings the author and named people, but only writes out unknown people and those in noPing", () => {
         const { create } = setup();
-        const result: any = create({ text: "grill", at: "2026-10-16 18:00", for: ["adam", "Beata", "Zenek", "Jack", "Adam"] });
-        expect(result.pinged).toEqual(["Jack", "Adam"]);
+        const result: any = create({ text: "grill", at: "2026-10-16 18:00", for: ["adam", "Beata", "Zenek", "Olek", "Adam"] });
+        expect(result.pinged).toEqual(["Olek", "Adam"]);
         expect(result.notPinged).toEqual(["Beata", "Zenek"]);
         const row = db.get(result.id)!;
-        expect(row.mentions).toEqual([{ id: "1", name: "Jack" }, { id: "11", name: "Adam" }]);
+        expect(row.mentions).toEqual([{ id: "1", name: "Olek" }, { id: "11", name: "Adam" }]);
         expect(row.plainNames).toEqual(["Beata", "Zenek"]);
     });
 
@@ -167,8 +167,8 @@ describe("create_reminder, list_reminders, cancel_reminder", () => {
 
 describe("message text", () => {
     const row = (overrides: Partial<ReminderRow> = {}): ReminderRow => ({
-        id: 1, authorId: "1", authorName: "Jack", channelId: "c", sourceMessageId: "m", dueAt: Date.UTC(2026, 9, 16, 16, 0),
-        text: "spotkanie", mentions: [{ id: "1", name: "Jack" }, { id: "11", name: "Adam" }], plainNames: ["Beata"],
+        id: 1, authorId: "1", authorName: "Olek", channelId: "c", sourceMessageId: "m", dueAt: Date.UTC(2026, 9, 16, 16, 0),
+        text: "spotkanie", mentions: [{ id: "1", name: "Olek" }, { id: "11", name: "Adam" }], plainNames: ["Beata"],
         status: "pending", attempts: 0, createdAt: NOW, ...overrides,
     });
 
@@ -183,8 +183,8 @@ describe("message text", () => {
 
     it("gives the comment model the reminder as data", () => {
         const input = buildCommentInput(row(), true, NOW);
-        expect(input).toContain("Poprosił: Jack");
-        expect(input).toContain("Dla: Jack, Adam, Beata");
+        expect(input).toContain("Poprosił: Olek");
+        expect(input).toContain("Dla: Olek, Adam, Beata");
         expect(input).toContain("Spóźnione: tak");
     });
 });
@@ -210,7 +210,7 @@ describe("ReminderService", () => {
     afterEach(() => db.close());
 
     const add = (dueAt: number, text = "coś", channelId = "c1") =>
-        db.add({ authorId: "1", authorName: "Jack", channelId, sourceMessageId: "m", dueAt, text, mentions: [{ id: "1", name: "Jack" }], plainNames: [] }, NOW - 1000);
+        db.add({ authorId: "1", authorName: "Olek", channelId, sourceMessageId: "m", dueAt, text, mentions: [{ id: "1", name: "Olek" }], plainNames: [] }, NOW - 1000);
 
     const service = (overrides: Partial<ConstructorParameters<typeof ReminderService>[0]> = {}) =>
         new ReminderService({

@@ -18,13 +18,13 @@ describe('moveCitesToLineStart', () => {
     const link = '[01.10.2026 22:02](<https://discord.com/channels/1/2/3>)';
 
     it('moves a trailing link to the start of a bullet', () => {
-        expect(moveCitesToLineStart(`- Jack kupił zebrafisza. Konkret dnia. ${link}`)).toBe(`- ${link} Jack kupił zebrafisza. Konkret dnia.`);
+        expect(moveCitesToLineStart(`- Olek kupił zebrafisza. Konkret dnia. ${link}`)).toBe(`- ${link} Olek kupił zebrafisza. Konkret dnia.`);
         expect(moveCitesToLineStart(`1. Coś się stało ${link}`)).toBe(`1. ${link} Coś się stało`);
         expect(moveCitesToLineStart(`Zwykła linia ${link}`)).toBe(`${link} Zwykła linia`);
     });
 
     it('leaves lines that already start with a link, have no link, or are only a link', () => {
-        const ok = `- ${link} Jack pytał o rowery`;
+        const ok = `- ${link} Olek pytał o rowery`;
         expect(moveCitesToLineStart(ok)).toBe(ok);
         expect(moveCitesToLineStart('- bez linku')).toBe('- bez linku');
         expect(moveCitesToLineStart(`- ${link}`)).toBe(`- ${link}`);
@@ -39,7 +39,7 @@ describe('moveCitesToLineStart', () => {
 describe('shortenWebCitations', () => {
     it('reduces web source links to the domain and leaves other text and message links alone', () => {
         expect(shortenWebCitations('Pada. ([tvp.info](https://www.tvp.info/1?utm_source=openai))  \nDalej ([wp.pl](http://wp.pl/a))')).toBe('Pada. (tvp.info)  \nDalej (wp.pl)');
-        const cite = '- [01.10.2026 22:02](<https://discord.com/channels/1/2/3>) Jack';
+        const cite = '- [01.10.2026 22:02](<https://discord.com/channels/1/2/3>) Olek';
         expect(shortenWebCitations(cite)).toBe(cite);
         expect(shortenWebCitations('Zwykły [link](https://x.pl) w tekście')).toBe('Zwykły [link](https://x.pl) w tekście');
     });
