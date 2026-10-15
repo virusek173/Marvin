@@ -1,7 +1,7 @@
 {
   "name": "marvin",
   "version": "1.0.0",
-  "description": "",
+  "description": "Discord bot with an agent loop: an LLM agent with tools that remembers your server, searches the web, reads links and sets reminders",
   "main": "/src/index.js",
   "type": "module",
   "scripts": {

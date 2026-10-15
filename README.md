@@ -1,6 +1,6 @@
-# Marvin - a multi-purpose Discord bot
+# Marvin - a Discord bot with an agent loop
 
-Marvin is a Discord bot with a memory of your server. It keeps a searchable archive of every message, answers questions about what was said and by whom, searches the web, reads links and images, transcribes voice messages, sets reminders, watches the air quality and posts periodic digests. It is sarcastic, has opinions and writes in Polish. Powered by OpenAI, running in Docker.
+Marvin is an LLM agent with tools that lives on your Discord server: it remembers every message (a searchable archive), answers questions about what was said and by whom, searches the web, reads links and images, transcribes voice messages, sets reminders, watches the air quality and posts periodic digests. The model decides itself which tool to call, in a loop, before it answers. It is sarcastic, has opinions and writes in Polish. Powered by OpenAI, running in Docker.
 
 ## What Marvin can do
 

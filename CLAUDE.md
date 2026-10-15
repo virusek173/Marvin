@@ -2,7 +2,7 @@
 
 ## What it is
 
-Marvin is a Discord bot that responds to user messages and posts a periodic server summary. It uses OpenAI (GPT-5) as the primary model, with its hosted web search for questions that need the internet, and cheaper models for trivial jobs (image description, emoji pick). OpenAI is the only provider.
+Marvin is a Discord bot with an agent loop: an LLM agent with tools (message archive, web search, reminders, air quality, …) that responds to user messages and posts a periodic server summary. It uses OpenAI (GPT-5) as the primary model, with its hosted web search for questions that need the internet, and cheaper models for trivial jobs (image description, emoji pick). OpenAI is the only provider.
 
 The server also has two other bots with their own personas: [Mugda](#mugda) and [Wibot](#wibot) — see below.
 
