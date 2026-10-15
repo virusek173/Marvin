@@ -4,7 +4,7 @@
 
 ```
 src/
-├── index.ts               Entry point: crons (20:00 server summary + monthly report, 04:00 profiles)
+├── index.ts               Entry point: crons (20:00 server summary + monthly report, 04:00 profiles, every 30 min air alert)
 ├── services/
 │   ├── discord.ts         Bot logic: message routing, event handlers
 │   ├── context.ts         In-memory FIFO context (fallback only, see "Message Archive")
@@ -12,7 +12,8 @@ src/
 │   ├── usage.ts           Token usage per day / call kind / model → data/usage.json
 │   ├── webTools.ts        fetch_url tool: page text for the model (scraper.ts: partial download, SSRF guard)
 │   ├── voice.ts           Voice-message transcription (opt-in via VOICE_TRANSCRIPTION_ENABLED)
-│   ├── airQuality.ts      get_air_quality tool: parcel-locker air sensor (opt-in via AIR_QUALITY_PAGE_URL)
+│   ├── airQuality.ts      get_air_quality tool: parcel-locker air sensor (opt-in via AIR_QUALITY_PAGE_URL); read() for the alert
+│   ├── airAlert.ts        Air alert rules (state machine, quiet hours, cooldown), state file, message template
 │   ├── client.ts          Discord.js client factory
 │   ├── date.ts            Date formatting utility
 │   └── history/           SQLite message archive (see below)
@@ -150,6 +151,15 @@ index.ts: previous month not yet in data/last_report.json (baseline only on firs
 client.sendMonthlyReport(month) → HistoryQuery.stats/phrases (exact counts) → model writes intro + award titles
     ↓
 channel(BOTS_CHANNEL_ID): commentary + bar charts rendered from the numbers
+
+[node-cron every 30 min, AIR_QUALITY_ALERT_ENABLED=true + AIR_QUALITY_PAGE_URL + AIR_ALERT_CHANNEL_ID]
+    ↓
+index.ts → client.checkAirAlert() → airQuality.read() (same sensor code and 10 min cache as the tool, no model)
+    ↓
+airAlert.evaluateAirAlert(state from data/air_alert.json, level): BAD / VERY_BAD, 2 readings in a row, 6 h cooldown per episode,
+only 07:00-22:00 Warsaw (otherwise pending until the first daytime reading), "back to normal" after 2 fine readings
+    ↓
+[action] fixed text (formatAirAlert) + one sentence from Marvin (SERVER_SUMMARY_MODEL_NAME, usage kind `alert`) → channel(AIR_ALERT_CHANNEL_ID)
 ```
 
 ## Data Models

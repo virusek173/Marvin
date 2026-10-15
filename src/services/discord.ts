@@ -23,6 +23,7 @@ import {
     getProfileSystemPrompt,
     getAuthorProfilePrompt,
     getMonthlyReportSystemPrompt,
+    getAirAlertSystemPrompt,
     WAKE_UP_MESSAGE_PROMPT,
     HISTORY_TOOLS_PROMPT,
     WEB_SEARCH_PROMPT,
@@ -33,7 +34,8 @@ import {
 import { CustomEmoji, getEmojiReactionSystemPrompt, isReactable, parseEmojiChoice, shouldRollReaction, isMissingPermission, addReaction } from "../utils/emojiReaction.js";
 import { SHORT_REACTION_MODEL_NAME, SERVER_SUMMARY_MODEL_NAME, PROFILE_MODEL_NAME } from "../utils/consts.js";
 import { buildWebTools } from "./webTools.js";
-import { createAirQuality } from "./airQuality.js";
+import { createAirQuality, translateLevel, type AirReading } from "./airQuality.js";
+import { airSeverity, evaluateAirAlert, formatAirAlert, readAirAlertState, writeAirAlertState, type AirAlertAction } from "./airAlert.js";
 import { extractUrls } from "./scraper.js";
 import { MessageArchive, getExcludedChannelIds, HISTORY_DB_FILE } from "./history/archive.js";
 import { HistoryQuery } from "./history/query.js";
@@ -58,7 +60,10 @@ const {
     MARVIN_USERNAME,
     TEST_WEBHOOK_AS_HUMAN,
     VOICE_TRANSCRIPTION_ENABLED,
-    VOICE_BACKFILL_ENABLED
+    VOICE_BACKFILL_ENABLED,
+    AIR_QUALITY_ALERT_ENABLED,
+    AIR_ALERT_CHANNEL_ID,
+    AIR_QUALITY_ALERT_FORCE_LEVEL
 } = process.env;
 
 const PERSON_IDS_TTL_MS = 10 * 60 * 1000;
@@ -71,6 +76,7 @@ const botExchangeCounters = new Map<string, number>();
 const BOT_EXCHANGE_LIMIT = 2;
 const SERVER_SUMMARY_FALLBACK_DAYS = 3;
 const SERVER_SUMMARY_MAX_MESSAGES = 1500;
+const AIR_NO_DATA_LOG_AFTER_MS = 3 * 60 * 60 * 1000;
 const BOT_EXHAUSTED_REPLY = "Mam Cię dość. Nie pisz do mnie więcej.";
 const WEB_ANSWER_ICON = "🌐";
 const LINK_ANSWER_ICON = "🔗";
@@ -98,6 +104,8 @@ export class DiscordServce {
     private historyTools: ToolSpec[] = [];
     private profilesRunning = false;
     private emojiReactionsDisabled = false;
+    private airNoDataSince: number | null = null;
+    private airNoDataLogged = false;
 
     constructor() {
         this.fallbackContext = new ContextService({});
@@ -122,6 +130,7 @@ export class DiscordServce {
                 void this.updateProfiles();
                 const forcedMonth = parseMonthKey(process.env.MONTHLY_REPORT_FORCE_MONTH ?? "");
                 if (forcedMonth) void this.sendMonthlyReport(forcedMonth);
+                if (AIR_QUALITY_ALERT_FORCE_LEVEL) void this.sendForcedAirAlert(AIR_QUALITY_ALERT_FORCE_LEVEL);
 
                 const wakeUpMessage = await MODEL.interact(WAKE_UP_MESSAGE_PROMPT, undefined, false, "wake-up");
                 channel.send(wakeUpMessage?.content ?? "Wstałem.");
@@ -423,6 +432,70 @@ export class DiscordServce {
         }
 
         await this.handleMentioned(message);
+    }
+
+    /**
+     * Cron (every 30 minutes, see index.ts): reads the air sensor and posts an alert to AIR_ALERT_CHANNEL_ID when the level is
+     * BAD / VERY_BAD, and a note when it is back to normal (rules in airAlert.ts). No data means no post, only a log line after 3 h.
+     */
+    async checkAirAlert() {
+        if (AIR_QUALITY_ALERT_ENABLED !== "true" || !airQualityTools || !AIR_ALERT_CHANNEL_ID) return;
+        let current: AirReading;
+        try {
+            current = await airQualityTools.read();
+            this.airNoDataSince = null;
+            this.airNoDataLogged = false;
+        } catch (error: any) {
+            this.airNoDataSince ??= Date.now();
+            if (!this.airNoDataLogged && Date.now() - this.airNoDataSince >= AIR_NO_DATA_LOG_AFTER_MS) {
+                this.airNoDataLogged = true;
+                console.log(`[powietrze] czujnik bez danych od ponad 3 godzin (${error?.message})`);
+            }
+            return;
+        }
+        try {
+            const { state, action } = evaluateAirAlert(readAirAlertState(), current.levelCode, new Date());
+            if (action && !(await this.postAirAlert(action, current))) return;
+            writeAirAlertState(state);
+        } catch (error: any) {
+            console.log("err (alert powietrza): ", error?.message);
+        }
+    }
+
+    /** Staging test (AIR_QUALITY_ALERT_FORCE_LEVEL): posts one alert (or "back to normal") with the real reading but the given level, ignoring state and hours. */
+    private async sendForcedAirAlert(level: string) {
+        if (!airQualityTools || !AIR_ALERT_CHANNEL_ID) return;
+        try {
+            const current = await airQualityTools.read();
+            const levelCode = level.toUpperCase();
+            const forced: AirReading = { levelCode, reading: { ...current.reading, airQualityLevel: translateLevel(levelCode) ?? levelCode } };
+            await this.postAirAlert(airSeverity(levelCode) > 0 ? "alert" : "recovery", forced);
+        } catch (error: any) {
+            console.log("err (wymuszony alert powietrza): ", error?.message);
+        }
+    }
+
+    /** Fixed text plus one sentence from Marvin (left out when the model fails). Returns false when nothing was posted. */
+    private async postAirAlert(kind: Exclude<AirAlertAction, null>, current: AirReading): Promise<boolean> {
+        const channel = this.client.channels.cache.get(AIR_ALERT_CHANNEL_ID);
+        if (!channel) {
+            console.log("[powietrze] nie widzę kanału AIR_ALERT_CHANNEL_ID — pomijam alert");
+            return false;
+        }
+        const text = formatAirAlert(kind, current);
+        let comment = "";
+        try {
+            const response = await MODEL.contextInteract([
+                MODEL.messageFactory(getAirAlertSystemPrompt(kind), "system"),
+                MODEL.messageFactory(text),
+            ], SERVER_SUMMARY_MODEL_NAME, false, "alert");
+            if (typeof response?.content === "string") comment = stripLeadingTimestampPrefix(response.content).trim().replace(/\s+/g, " ");
+        } catch (error: any) {
+            console.log("err (komentarz do alertu powietrza): ", error?.message);
+        }
+        await channel.send(comment ? `${text}\n\n${comment}` : text);
+        console.log(`[powietrze] wysłano ${kind === "alert" ? "alert" : "wiadomość o powrocie do normy"} (${current.levelCode})`);
+        return true;
     }
 
     /** Posts a digest of recent activity across all tracked channels to the bots channel. Triggered on a cron schedule (see index.ts), not by individual messages. */
