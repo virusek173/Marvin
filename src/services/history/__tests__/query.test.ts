@@ -382,6 +382,19 @@ describe("HistoryQuery", () => {
     describe("stats", () => {
         const keys = (res: { groups: { key: string; count: number }[] }) => res.groups.map(g => `${g.key}=${g.count}`);
 
+        it("counts voice messages per author with the voice filter, transcribed or not", () => {
+            db.insertLive(row({ authorId: "u1", authorName: "AdamNick", content: "", attachmentsText: "[Głosówka: Cześć wszystkim]" }));
+            db.insertLive(row({ authorId: "u1", authorName: "AdamNick", content: "", attachmentsText: "[Załącznik: voice-message.ogg (audio/ogg)]" }));
+            db.insertLive(row({ authorId: "u2", authorName: "Beata", content: "", attachmentsText: "[Głosówka: [cisza lub brak mowy]]" }));
+            db.insertLive(row({ authorId: "u2", authorName: "Beata", content: "zwykła wiadomość" }));
+            db.insertLive(row({ authorId: "u2", authorName: "Beata", content: "", attachmentsText: "[Załącznik: zdjecie.png (image/png)]" }));
+
+            const res = q.stats({ groupBy: "author", voice: true });
+            expect(res.total).toBe(3);
+            expect(keys(res)).toEqual(["Adam=2", "Beata=1"]);
+            expect(q.search({ query: "wszystkim", voice: true }).count).toBe(1);
+        });
+
         it("counts per author, merging usernames of one person and skipping bots by default", () => {
             for (let i = 0; i < 3; i++) db.insertLive(row({ authorId: "u1", authorName: "AdamNick" }));
             for (let i = 0; i < 2; i++) db.insertLive(row({ authorId: "u2", authorName: "Beata" }));
