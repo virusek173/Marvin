@@ -38,7 +38,7 @@ import { SHORT_REACTION_MODEL_NAME, SERVER_SUMMARY_MODEL_NAME, PROFILE_MODEL_NAM
 import { buildWebTools } from "./webTools.js";
 import { createAirQuality, translateLevel, type AirReading } from "./airQuality.js";
 import { airSeverity, evaluateAirAlert, formatAirAlert, readAirAlertState, writeAirAlertState, type AirAlertAction } from "./airAlert.js";
-import { RemindersDb, ReminderService, buildReminderTools, buildCommentInput, cleanReminderComment, reminderCalendar } from "./reminders.js";
+import { RemindersDb, ReminderService, buildReminderTools, buildCommentInput, cleanReminderComment, reminderCalendar, formatWarsaw } from "./reminders.js";
 import { extractUrls } from "./scraper.js";
 import { MessageArchive, getExcludedChannelIds, HISTORY_DB_FILE } from "./history/archive.js";
 import { HistoryQuery } from "./history/query.js";
@@ -670,7 +670,7 @@ export class DiscordServce {
             try {
                 const historyTools = this.historyQuery && this.historyTools.length > 0 ? this.historyQuery.scoped(message.id) : null;
                 assResponse = await MODEL.contextInteractWithTools(
-                    [this.getSystemContext(!!historyTools, authorProfile, reminderTools.length ? getReminderPrompt(reminderCalendar(Date.now())) : ''), ...context],
+                    [this.getSystemContext(!!historyTools, authorProfile, reminderTools.length ? getReminderPrompt() : ''), ...context, MODEL.messageFactory(reminderTools.length ? reminderCalendar(Date.now()) : `Teraz jest ${formatWarsaw(Date.now())} (czas Warszawy).`, 'system')],
                     [...(historyTools ? buildHistoryTools(historyTools) : []), ...buildWebTools(() => { fetchedPage = true; }), ...(airQualityTools ? airQualityTools(() => { airData = true; }) : []), ...reminderTools],
                     { webSearch: true, kind: "question", requireTool: extractUrls(message.content ?? "").length > 0 ? "fetch_url" : undefined, onRound: () => message.channel.sendTyping() }
                 );

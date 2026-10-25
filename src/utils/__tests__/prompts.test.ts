@@ -55,9 +55,9 @@ describe("tool prompts", () => {
 });
 
 describe("reminder prompts", () => {
-    it("carries the calendar and tells the model to call the tool, ask for a missing hour and confirm with the returned date", () => {
-        const prompt = getReminderPrompt("Teraz jest piątek 16.10.2026 12:00 (czas Warszawy).");
-        expect(prompt).toContain("Teraz jest piątek 16.10.2026 12:00");
+    it("is static (no clock, for the prompt cache) and tells the model to call the tool, ask for a missing hour and confirm with the returned date", () => {
+        const prompt = getReminderPrompt();
+        expect(prompt).not.toMatch(/Teraz jest/);
         expect(prompt).toMatch(/create_reminder/);
         expect(prompt).toMatch(/zapytaj o godzinę/);
         expect(prompt).toMatch(/pola due/);
