@@ -1,4 +1,20 @@
-import { getAuthorProfilePrompt, getArchiveRangePrompt, getMarvinMotivationSystemPrompt, getReminderPrompt, getReminderCommentSystemPrompt, HISTORY_TOOLS_PROMPT, WEB_SEARCH_PROMPT } from "../prompts";
+import { getAuthorProfilePrompt, getArchiveRangePrompt, getMarvinMotivationSystemPrompt, getReminderPrompt, getReminderCommentSystemPrompt, getSummaryAwardsPrompt, HISTORY_TOOLS_PROMPT, WEB_SEARCH_PROMPT } from "../prompts";
+
+describe("getSummaryAwardsPrompt", () => {
+    it("asks for a singular announcement when there is only one award", () => {
+        const prompt = getSummaryAwardsPrompt(1);
+        expect(prompt).toContain("nagroda specjalna");
+        expect(prompt).toContain("liczbie pojedynczej");
+        expect(prompt).not.toContain("mamy nagrody specjalne");
+    });
+
+    it("keeps the plural announcement for two awards", () => {
+        const prompt = getSummaryAwardsPrompt(2);
+        expect(prompt).toContain("mamy nagrody specjalne");
+        expect(prompt).toContain("2 nagród");
+        expect(prompt).not.toContain("liczbie pojedynczej");
+    });
+});
 
 describe("getMarvinMotivationSystemPrompt people", () => {
     const ids = { Adam: "11", Mugda: "22", Beata: "33" };

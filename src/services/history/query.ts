@@ -4,7 +4,7 @@ import { cutText, mapGlobalNameNameToRealName } from "../../utils/helpers.js";
 import { formatWarsaw, parseWarsaw, WARSAW_TZ } from "./time.js";
 import { renderBody } from "./context.js";
 import { PhraseCount, PhraseCounter } from "./phrases.js";
-import { emojiKeyFromInput } from "./emoji.js";
+import { emojiKeyFromInput, extractEmoji } from "./emoji.js";
 import { CiteRegistry } from "./cites.js";
 
 export const LIMITS = {
@@ -219,6 +219,39 @@ const clip = (text: string, terms: string[], maxChars: number = LIMITS.textChars
     const end = start + maxChars;
     return `…${cutText(text.substring(start), maxChars)}${end < text.length ? "…" : ""}`;
 };
+
+export interface AwardMessage {
+    id: string;
+    channelId: string;
+    /** Real first name (nick map applied). */
+    author: string;
+    createdAt: number;
+    text: string;
+    /** Real name of the author of the message this one replies to (when that message is archived). */
+    replyTo?: string;
+    isVoice: boolean;
+    /** Keys of the emoji used in the text. */
+    emoji: string[];
+}
+
+/** What one person did before the window: used for "went quiet" and "came back" awards. */
+export interface AwardActivity {
+    /** Messages in the 30 days before the window. */
+    prior30: number;
+    /** Time of the last message before the window. */
+    lastBefore: number;
+}
+
+export interface AwardSource {
+    /** Start of the window, ms. */
+    since: number;
+    messages: AwardMessage[];
+    activity: Map<string, AwardActivity>;
+    /** Reaction counts per message id (emoji key → count). */
+    reactions: Map<string, Record<string, number>>;
+    /** Markdown link to a message, or undefined when the server id is unknown. */
+    link: (m: AwardMessage) => string | undefined;
+}
 
 /**
  * Read-only access to the message archive for the model's tools. Opens its own `readonly` connection, runs only
@@ -518,6 +551,51 @@ export class HistoryQuery {
         const result = this.render(rows, limit);
         if (result.count === 0) return { ...result, note: "Nie znaleziono wiadomości z reakcjami dla tych filtrów (reakcje są zapisane tylko dla zaimportowanych wiadomości)." };
         return { ...result, messages: result.messages.map(m => ({ ...m, reactionCount: counts.get(m.id) })) };
+    }
+
+    /** Raw material for the summary awards: human messages of a time window with their reactions (excluded channels hidden). */
+    awardSource(sinceMs: number, untilMs: number, limit = 3000): AwardSource {
+        const hidden = this.excludedClause("m");
+        const rows = this.db
+            .prepare(`SELECT m.id, m.channel_id, m.author_name, m.content, m.attachments_text, m.created_at,
+                    (SELECT r.author_name FROM messages r WHERE r.id = m.reply_to_id) AS reply_author
+                FROM messages m
+                WHERE m.is_bot = 0 AND m.is_technical = 0 AND m.created_at > ? AND m.created_at <= ? ${hidden.sql}
+                ORDER BY m.created_at ASC LIMIT ?`)
+            .all(sinceMs, untilMs, ...hidden.params, limit) as any[];
+        const messages: AwardMessage[] = rows.map(r => ({
+            id: r.id,
+            channelId: r.channel_id,
+            author: mapGlobalNameNameToRealName[r.author_name],
+            createdAt: r.created_at,
+            text: this.cleanText(r.content ?? ""),
+            ...(r.reply_author ? { replyTo: mapGlobalNameNameToRealName[r.reply_author] } : null),
+            isVoice: /\[Głosówka|voice-message\.ogg/.test(r.attachments_text ?? ""),
+            emoji: [...extractEmoji(r.content ?? "").keys()],
+        }));
+        const activity = new Map<string, AwardActivity>();
+        const before = this.db
+            .prepare(`SELECT m.author_name, COUNT(CASE WHEN m.created_at > ? THEN 1 END) AS prior30, MAX(m.created_at) AS last_before
+                FROM messages m
+                WHERE m.is_bot = 0 AND m.is_technical = 0 AND m.created_at <= ? ${hidden.sql}
+                GROUP BY m.author_name`)
+            .all(sinceMs - 30 * 86_400_000, sinceMs, ...hidden.params) as any[];
+        for (const r of before) {
+            const name = mapGlobalNameNameToRealName[r.author_name];
+            const known = activity.get(name);
+            activity.set(name, { prior30: (known?.prior30 ?? 0) + r.prior30, lastBefore: Math.max(known?.lastBefore ?? 0, r.last_before) });
+        }
+        const reactions = new Map<string, Record<string, number>>();
+        for (let i = 0; i < messages.length; i += 500) {
+            for (const [id, counts] of this.reactionsFor(messages.slice(i, i + 500).map(m => m.id))) reactions.set(id, counts);
+        }
+        const link = (m: AwardMessage): string | undefined => {
+            const guild = this.guildId?.();
+            if (!guild) return undefined;
+            const [y, mo, d, hm] = formatWarsaw(m.createdAt).split(/[. ]/);
+            return `[${d}.${mo}.${y} ${hm}](<https://discord.com/channels/${guild}/${m.channelId}/${m.id}>)`;
+        };
+        return { since: sinceMs, messages, activity, reactions, link };
     }
 
     /** Most common words and word pairs in human messages matching the filters (links, mentions and filler words ignored). */

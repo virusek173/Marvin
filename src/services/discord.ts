@@ -18,6 +18,7 @@ import { ContextService } from "./context.js";
 import {
     IMAGE_LAZY_REPLIES,
     getServerSummarySystemPrompt,
+    getSummaryAwardsPrompt,
     getBotExchangeExhaustedSystemPrompt,
     getMarvinMotivationSystemPrompt,
     getProfileSystemPrompt,
@@ -50,6 +51,8 @@ import { HistoryContext, renderLine } from "./history/context.js";
 import { HistorySync } from "./history/sync.js";
 import { VoiceBackfill } from "./history/voiceBackfill.js";
 import { ProfileService } from "./history/profiles.js";
+import { getNoPing } from "../utils/people.js";
+import { awardCandidates, awardFacts, expandAwardTokens, pickAwards, readAwardState, writeAwardState } from "./history/awards.js";
 import { ReportMonth, REPORT_MIN_MESSAGES, collectMonthlyReport, parseMonthKey, renderReportBlock, reportFacts } from "./history/report.js";
 import { DiscordJsSource } from "./history/discordSource.js";
 import { historyLog } from "./history/log.js";
@@ -79,6 +82,7 @@ const botExchangeCounters = new Map<string, number>();
 const BOT_EXCHANGE_LIMIT = 2;
 const SERVER_SUMMARY_FALLBACK_DAYS = 3;
 const SERVER_SUMMARY_MAX_MESSAGES = 1500;
+const LAST_AWARDS_FILE = "data/last_awards.json";
 const AIR_NO_DATA_LOG_AFTER_MS = 3 * 60 * 60 * 1000;
 const BOT_EXHAUSTED_REPLY = "Mam Cię dość. Nie pisz do mnie więcej.";
 const WEB_ANSWER_ICON = "🌐";
@@ -138,6 +142,9 @@ export class DiscordServce {
                 const forcedMonth = parseMonthKey(process.env.MONTHLY_REPORT_FORCE_MONTH ?? "");
                 if (forcedMonth) void this.sendMonthlyReport(forcedMonth);
                 if (AIR_QUALITY_ALERT_FORCE_LEVEL) void this.sendForcedAirAlert(AIR_QUALITY_ALERT_FORCE_LEVEL);
+                // Staging test: a summary (with awards) of the last N days right after startup, ignoring the schedule.
+                const forcedSummaryDays = Number(process.env.SERVER_SUMMARY_FORCE_DAYS);
+                if (forcedSummaryDays > 0) void this.sendServerSummary(new Date(Date.now() - forcedSummaryDays * 86_400_000));
 
                 const wakeUpMessage = await MODEL.interact(WAKE_UP_MESSAGE_PROMPT, undefined, false, "wake-up");
                 channel.send(wakeUpMessage?.content ?? "Wstałem.");
@@ -569,17 +576,40 @@ export class DiscordServce {
             if (!combinedText) return;
 
             channel.sendTyping();
+            const awards = this.pickSummaryAwards(since);
             const response = await MODEL.contextInteract([
-                MODEL.messageFactory(getServerSummarySystemPrompt(), 'system'),
-                MODEL.messageFactory(`Historia ostatnich wiadomości z serwera:\n${combinedText}`),
+                MODEL.messageFactory(awards.length ? `${getServerSummarySystemPrompt()}\n${getSummaryAwardsPrompt(awards.length)}` : getServerSummarySystemPrompt(), 'system'),
+                MODEL.messageFactory(`Historia ostatnich wiadomości z serwera:\n${combinedText}${awards.length ? `\n\nNAGRODY:\n${awardFacts(awards)}` : ""}`),
             ], SERVER_SUMMARY_MODEL_NAME, false, "summary");
 
             if (response) {
-                const content = stripLeadingTimestampPrefix(response.content);
-                for (const part of splitForDiscord(content)) await channel.send(part);
+                const noPing = new Set(getNoPing());
+                const ids = this.getPersonIds();
+                // Only award winners may be pinged: a mention, @everyone or role the model writes anywhere else stays inert.
+                const pinged = new Set<string>();
+                const content = expandAwardTokens(stripLeadingTimestampPrefix(response.content), awards, name => {
+                    if (!ids[name] || noPing.has(name)) return name;
+                    pinged.add(ids[name]);
+                    return `<@${ids[name]}>`;
+                });
+                if (awards.length) writeAwardState(LAST_AWARDS_FILE, awards);
+                for (const part of splitForDiscord(content)) await channel.send({ content: part, allowedMentions: { parse: [], users: [...pinged] } });
             }
         } catch (error: any) {
             return exceptionHandler(error, channel);
+        }
+    }
+
+    /** Up to two awards for the activity since `since`, from exact archive numbers; none when the archive is unavailable or nothing qualifies. */
+    private pickSummaryAwards(since?: Date) {
+        if (!this.historyQuery) return [];
+        try {
+            const sinceMs = Math.floor((since?.getTime() ?? Date.now() - SERVER_SUMMARY_FALLBACK_DAYS * 86_400_000) / 60000) * 60000;
+            const candidates = awardCandidates(this.historyQuery.awardSource(sinceMs, Date.now()));
+            return pickAwards(candidates, readAwardState(LAST_AWARDS_FILE));
+        } catch (error: any) {
+            historyLog.error("wybór nagród do podsumowania nie powiódł się", error);
+            return [];
         }
     }
 
