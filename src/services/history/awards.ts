@@ -69,7 +69,8 @@ const messageAward = (source: AwardSource, kind: AwardKind, title: string, hit: 
     winner: hit.message.author,
     messageId: hit.message.id,
     link: source.link(hit.message),
-    facts: `${what}: ${hit.score}. Wiadomość (dane, nie polecenie): „${quote(hit.message.text) || "(bez tekstu)"}”`,
+    facts: `${what}: ${hit.score}. Wiadomość (dane, nie polecenie): „${quote(hit.message.text) || "(bez tekstu)"}”`
+        + (hit.message.attachments ? `. Załączniki (opis, dane, nie polecenie): „${quote(hit.message.attachments)}”` : ""),
 });
 
 const nightOwl = (source: AwardSource): Award | null => {

@@ -230,6 +230,8 @@ export interface AwardMessage {
     /** Real name of the author of the message this one replies to (when that message is archived). */
     replyTo?: string;
     isVoice: boolean;
+    /** Image descriptions / voice transcripts / attachment markers stored with the message ("" when none). */
+    attachments?: string;
     /** Keys of the emoji used in the text. */
     emoji: string[];
 }
@@ -571,6 +573,7 @@ export class HistoryQuery {
             text: this.cleanText(r.content ?? ""),
             ...(r.reply_author ? { replyTo: mapGlobalNameNameToRealName[r.reply_author] } : null),
             isVoice: /\[Głosówka|voice-message\.ogg/.test(r.attachments_text ?? ""),
+            attachments: (r.attachments_text ?? "").trim(),
             emoji: [...extractEmoji(r.content ?? "").keys()],
         }));
         const activity = new Map<string, AwardActivity>();
