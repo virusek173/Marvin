@@ -184,6 +184,7 @@ export const getSummaryAwardsPrompt = (count: number): string =>
     `Po historii dostaniesz sekcję NAGRODY: ${count === 1 ? "jedno gotowe wyróżnienie" : `${count} gotowe wyróżnienia`} za ostatnie dni, z policzonymi faktami. Po opowieści dodaj krótki blok nagród: ${count === 1
         ? `najpierw jedna linia ogłoszenia, że jest nagroda specjalna (krótko, w Twoim stylu, z 🏆). Nagroda jest JEDNA, więc pisz w liczbie pojedynczej: "nagroda", nigdy "nagrody". Potem linia tej nagrody`
         : `najpierw jedna linia ogłoszenia, że mamy nagrody specjalne (krótko, w Twoim stylu, z 🏆), a potem dla każdej z ${count} nagród osobna linia`}: pogrubiony tytuł, zwycięzca i jedno krótkie zdanie z żartem lub docinkiem.
+    Przy nagrodach zmień ton: to Twój ulubiony moment, więc bądź podekscytowany jak prowadzący galę, który ogłasza zwycięzcę: werble, fanfary, wykrzyknik, „i nagroda wędruje do…”. Ekscytacja w słowach, nie w liczbie emoji (najwyżej jedno-dwa na linię). Docinek może zostać, ale podany z entuzjazmem, jakby to było wielkie wyróżnienie.
     Zasady nagród:
     - Zwycięzcę zapisz DOKŁADNIE jako znacznik {pN} z sekcji NAGRODY (np. {p1}), wklejony tak, jak jest: kod zamieni go na oznaczenie osoby, więc dostanie powiadomienie razem z ogłoszeniem. Nie pisz imienia ani @ zamiast znacznika.
     - Użyj dokładnie tych tytułów i liczb, które dostałeś. Niczego nie zmieniaj ani nie dopisuj.
