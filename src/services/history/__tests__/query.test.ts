@@ -616,6 +616,32 @@ describe("HistoryQuery", () => {
             expect(q.topReacted({ reaction: "💀" }).note).toBeDefined();
         });
 
+        it("awardSource returns human messages of the window with reactions and links, hiding bots and excluded channels", () => {
+            const inside = add({ content: "w oknie" }, [{ emoji: "😂", count: 3 }]);
+            add({ content: "bot", authorId: "u9", authorName: "Rescheduler", isBot: true });
+            add({ content: "tajne", channelId: "secret" });
+            add({ content: "przed oknem", createdAt: BASE - 3_600_000 });
+            q.close();
+            q = new HistoryQuery(file, { excludedChannelIds: ["secret"], selfId: MARVIN, guildId: () => "G1" });
+            const source = q.awardSource(BASE, BASE + 24 * 3_600_000);
+            expect(source.messages.map(m => m.text)).toEqual(["w oknie"]);
+            expect(source.reactions.get(inside.id)).toEqual({ "😂": 3 });
+            expect(source.link(source.messages[0])).toMatch(new RegExp(`^\\[10\\.03\\.2025 \\d\\d:\\d\\d\\]\\(<https://discord\\.com/channels/G1/c1/${inside.id}>\\)$`));
+        });
+
+        it("awardSource tells who a message replies to, voice messages, emoji in the text and earlier activity", () => {
+            const early = add({ content: "dawno", createdAt: BASE - 5 * 86_400_000 });
+            const first = add({ content: "pytanie", authorId: "u2", authorName: "Beata" });
+            add({ content: "odpowiedź 😂 <:pepe:1>", replyToId: first.id });
+            add({ content: "", attachmentsText: "[Głosówka: cześć]" });
+            const source = q.awardSource(BASE, BASE + 24 * 3_600_000);
+            expect(source.messages.map(m => m.replyTo)).toEqual([undefined, "Beata", undefined]);
+            expect(source.messages[1].emoji.sort()).toEqual([":pepe:", "😂"]);
+            expect(source.messages.map(m => m.isVoice)).toEqual([false, false, true]);
+            expect(source.activity.get("Adam")).toEqual({ prior30: 1, lastBefore: early.createdAt });
+            expect(source.since).toBe(BASE);
+        });
+
         it("hides reactions on the asking message and newer ones in a scoped view", () => {
             const old = add({ content: "stare" }, [{ emoji: "👍", count: 1 }]);
             const question = add({ content: "marvin, co lubimy?" }, [{ emoji: "👍", count: 9 }]);
