@@ -40,6 +40,8 @@ describe("OpenAi.contextInteractWithTools", () => {
         const req = create.mock.calls[0][0];
         expect(req.tools).toEqual([expect.objectContaining({ type: "function", name: "search" })]);
         expect(req.reasoning).toEqual({ effort: "low" });
+        expect(req.prompt_cache_retention).toBe("24h");
+        expect(req.prompt_cache_key).toBe("marvin-question");
         expect(req.tool_choice).toBe("auto");
         expect(req.input).toEqual([{ role: "system", content: "s" }, { role: "user", content: "hej" }]);
     });

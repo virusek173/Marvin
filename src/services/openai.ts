@@ -50,6 +50,12 @@ const MAX_TOTAL_TOOL_CHARS = 50000;
 const MAX_MALFORMED_RETRIES = 4;
 const TOOL_REASONING_EFFORT = "low";
 const TOOL_MAX_OUTPUT_TOKENS = 4000;
+/**
+ * Keep the cached prompt prefix (system prompt + tool schemas, ~15k tokens) for 24 h instead of the default few minutes:
+ * questions are often hours apart, so round 1 used to pay full price for the same prefix. The cache key keeps calls of
+ * one kind on the same cache.
+ */
+const PROMPT_CACHE_RETENTION = "24h";
 
 const toResponsesInput = (m: Message) => ({
     role: m.role,
@@ -178,6 +184,8 @@ export class OpenAi {
                     tool_choice: forceText ? "none" : round === 0 && requireTool && byName.has(requireTool) ? { type: "function", name: requireTool } : "auto",
                     reasoning: { effort: TOOL_REASONING_EFFORT },
                     max_output_tokens: TOOL_MAX_OUTPUT_TOKENS,
+                    // Not in the typings of this SDK version yet; the API accepts both.
+                    ...({ prompt_cache_retention: PROMPT_CACHE_RETENTION, prompt_cache_key: `marvin-${kind}` } as any),
                 });
                 const used = readUsage(response.usage);
                 total = addUsage(total, used);
