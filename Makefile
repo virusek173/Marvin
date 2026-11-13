@@ -1,4 +1,4 @@
-.PHONY: up down build restart staging-up staging-down staging-build staging-restart staging-logs usage usage-staging
+.PHONY: up down build restart staging-up staging-down staging-build staging-restart staging-logs usage usage-staging usage-compare
 
 up:
 	docker compose up -d
@@ -24,3 +24,5 @@ usage:
 	docker compose exec -T marvin cat data/usage.json | node scripts/usage-report.mjs - $(DAYS)
 usage-staging:
 	$(STAGING) exec -T marvin-staging cat data/usage.json | node scripts/usage-report.mjs - $(DAYS)
+usage-compare:
+	docker compose exec -T marvin cat data/usage.json | node scripts/usage-compare.mjs - $(SINCE) $(DAYS)
