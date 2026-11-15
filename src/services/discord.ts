@@ -31,6 +31,7 @@ import {
     AIR_QUALITY_PROMPT,
     getArchiveRangePrompt,
     getReminderPrompt,
+    getNotesPrompt,
     getReminderCommentSystemPrompt,
     PromptProfile
 } from "../utils/prompts.js";
@@ -40,6 +41,7 @@ import { buildWebTools } from "./webTools.js";
 import { createAirQuality, translateLevel, type AirReading } from "./airQuality.js";
 import { airSeverity, evaluateAirAlert, formatAirAlert, readAirAlertState, writeAirAlertState, type AirAlertAction } from "./airAlert.js";
 import { RemindersDb, ReminderService, buildReminderTools, buildCommentInput, cleanReminderComment, reminderCalendar, formatWarsaw } from "./reminders.js";
+import { NotesDb, buildNoteTools } from "./notes.js";
 import { extractUrls } from "./scraper.js";
 import { MessageArchive, getExcludedChannelIds, HISTORY_DB_FILE } from "./history/archive.js";
 import { HistoryQuery } from "./history/query.js";
@@ -111,6 +113,7 @@ export class DiscordServce {
     private historyTools: ToolSpec[] = [];
     private remindersDb: RemindersDb | null = null;
     private reminderService: ReminderService | null = null;
+    private notesDb: NotesDb | null = null;
     private profilesRunning = false;
     private emojiReactionsDisabled = false;
     private airNoDataSince: number | null = null;
@@ -126,6 +129,7 @@ export class DiscordServce {
         this.historyContext = new HistoryContext(this.archive.database, this.fallbackContext, EXCLUDED_CHANNEL_IDS, MARVIN_ID);
         this.openHistoryTools();
         this.openReminders();
+        this.openNotes();
 
         const clientService = new ClientService();
         this.client = clientService.getClient();
@@ -266,6 +270,34 @@ export class DiscordServce {
             this.remindersDb = null;
             this.reminderService = null;
             console.error("[reminders] nie udało się otworzyć bazy przypomnień — Marvin bez przypomnień:", error?.message);
+        }
+    }
+
+    /** Notes live in their own SQLite file; without it Marvin simply has no note tools. */
+    private openNotes() {
+        try {
+            this.notesDb = new NotesDb();
+        } catch (error: any) {
+            this.notesDb = null;
+            console.error("[notes] nie udało się otworzyć bazy notatek — Marvin bez notatek:", error?.message);
+        }
+    }
+
+    /** Note tools and their prompt for one question, or none: no database, a bot author or an excluded channel. */
+    private buildNoteToolsFor(message: any): { tools: ToolSpec[]; prompt: string } {
+        const none = { tools: [], prompt: '' };
+        if (!this.notesDb) return none;
+        const isTestWebhook = TEST_WEBHOOK_AS_HUMAN === "true" && !!message.webhookId;
+        if (message.author?.bot && !isTestWebhook) return none;
+        if (this.archive.isExcluded(message.channelId, message.channel?.parentId)) return none;
+        try {
+            return {
+                tools: buildNoteTools({ db: this.notesDb, authorId: message.author.id, authorName: mapGlobalNameNameToRealName[message.author.globalName] }),
+                prompt: getNotesPrompt(this.notesDb.names()),
+            };
+        } catch (error: any) {
+            console.error("[notes] błąd odczytu notatek:", error?.message);
+            return none;
         }
     }
 
@@ -696,12 +728,13 @@ export class DiscordServce {
             let fetchedPage = false;
             let airData = false;
             const reminderTools = this.buildReminderToolsFor(message);
+            const notes = this.buildNoteToolsFor(message);
             const typing = setInterval(() => message.channel.sendTyping().catch(() => {}), 8000);
             try {
                 const historyTools = this.historyQuery && this.historyTools.length > 0 ? this.historyQuery.scoped(message.id) : null;
                 assResponse = await MODEL.contextInteractWithTools(
-                    [this.getSystemContext(!!historyTools, authorProfile, reminderTools.length ? getReminderPrompt() : ''), ...context, MODEL.messageFactory(reminderTools.length ? reminderCalendar(Date.now()) : `Teraz jest ${formatWarsaw(Date.now())} (czas Warszawy).`, 'system')],
-                    [...(historyTools ? buildHistoryTools(historyTools) : []), ...buildWebTools(() => { fetchedPage = true; }), ...(airQualityTools ? airQualityTools(() => { airData = true; }) : []), ...reminderTools],
+                    [this.getSystemContext(!!historyTools, authorProfile, (reminderTools.length ? getReminderPrompt() : '') + notes.prompt), ...context, MODEL.messageFactory(reminderTools.length ? reminderCalendar(Date.now()) : `Teraz jest ${formatWarsaw(Date.now())} (czas Warszawy).`, 'system')],
+                    [...(historyTools ? buildHistoryTools(historyTools) : []), ...buildWebTools(() => { fetchedPage = true; }), ...(airQualityTools ? airQualityTools(() => { airData = true; }) : []), ...reminderTools, ...notes.tools],
                     { webSearch: true, kind: "question", requireTool: extractUrls(message.content ?? "").length > 0 ? "fetch_url" : undefined, onRound: () => message.channel.sendTyping() }
                 );
                 if (assResponse && historyTools) assResponse = { ...assResponse, content: historyTools.expandCites(assResponse.content ?? "") };
@@ -728,6 +761,7 @@ export class DiscordServce {
         this.voiceBackfill?.stop();
         this.historyQuery?.close();
         this.remindersDb?.close();
+        this.notesDb?.close();
         this.client.destroy();
     }
 }
