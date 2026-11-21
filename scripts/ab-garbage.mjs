@@ -1,4 +1,4 @@
-// Runs INSIDE the staging container (copied to /usr/src/app/ab-garbage.mjs): node ab-garbage.mjs [runsPerCell]
+// Runs INSIDE the staging container (copied to /usr/src/app/ab-garbage.mjs): node ab-garbage.mjs [runsPerCell] [model]
 // A/B test of first-round replies of the tool loop; counts empty / leaked / gibberish answers per variant.
 import OpenAI from "openai";
 import { HistoryDb } from "./dest/src/services/history/db.js";
@@ -10,7 +10,7 @@ import { getMarvinMotivationSystemPrompt, HISTORY_TOOLS_PROMPT } from "./dest/sr
 import { mapGlobalNameNameToRealName } from "./dest/src/utils/helpers.js";
 
 const RUNS = Number(process.argv[2] ?? 10);
-const MODEL = "gpt-5.6-terra";
+const MODEL = process.argv[3] ?? "gpt-6.1-terra";
 const LEAKED = /\bto=functions\.|<\|(?:call|channel|start|end|message)\|>|^\s*\[tool\]|weighted tokens left|[぀-ヿ㐀-鿿가-힯Ⴀ-ჿ]|\bWe need (?:to )?respond|^\s*\[assistant\b/i;
 
 const env = process.env;
