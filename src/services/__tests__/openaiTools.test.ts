@@ -122,7 +122,7 @@ describe("OpenAi.contextInteractWithTools", () => {
             .mockResolvedValueOnce({ ...answer("ok"), ...usage(1500) });
         await ai().contextInteractWithTools([{ role: "user", content: "x" }], [search], { kind: "question" });
         expect(record).toHaveBeenCalledTimes(2);
-        expect(record).toHaveBeenNthCalledWith(2, "question", "gpt-5.6-terra", { input: 1500, cached: 0, output: 10, reasoning: 0 });
+        expect(record).toHaveBeenNthCalledWith(2, "question", "gpt-6.1-terra", { input: 1500, cached: 0, output: 10, reasoning: 0 });
     });
 
     it("reports unknown tools, bad arguments and tool exceptions to the model instead of throwing", async () => {

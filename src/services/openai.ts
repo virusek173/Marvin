@@ -154,7 +154,7 @@ export class OpenAi {
     async contextInteractWithTools(context: Array<Message>, tools: ToolSpec[], options: ToolLoopOptions = {}): Promise<any> {
         const { model = DEFAULT_MODEL_NAME, maxRounds = 5, onRound, webSearch = false, kind = "question", requireTool } = options;
         const byName = new Map(tools.map(t => [t.name, t]));
-        // gpt-5.6 does not accept function tools together with reasoning on /chat/completions, so this loop uses /responses
+        // gpt-5.6/6.x do not accept function tools together with reasoning on /chat/completions, so this loop uses /responses
         const apiTools: any[] = tools.map(t => ({
             type: "function" as const,
             name: t.name,
